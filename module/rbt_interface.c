@@ -44,18 +44,17 @@ static int cmd_show(struct seq_file *m, void *p)
 {
 	struct rb_node *node = rbt.rb_node, *parent = NULL;
 	bool left = false;
-	seq_printf(m, "RBT ");
 	while(true) {
 		if (!node) {
-			seq_printf(m, "Empty");
+			seq_printf(m, "Leaf");
 
 			if (!parent)
 				break;
 
 			if (left) {
-				seq_printf(m, " %llu %llu ",
+				seq_printf(m, " (%llu,%s) ",
 						data_from_node(parent)->key,
-						data_from_node(parent)->value);
+						rb_is_red(parent) ? "R" : "B");
 				node = parent->rb_right;
 				left = false;
 			} else {
@@ -66,19 +65,22 @@ static int cmd_show(struct seq_file *m, void *p)
 				}
 
 				if (parent->rb_right == node) {
-					seq_printf(m, ")");
 					break;
 				}
 
-				seq_printf(m, " %llu %llu ",
+				seq_printf(m, " (%llu,%s) ",
 						data_from_node(parent)->key,
-						data_from_node(parent)->value);
+						rb_is_red(parent) ? "R" : "B");
 
 				node = parent->rb_right;
 				left = false;
 			}
 		} else {
-			seq_printf(m, "(Branch %s ", rb_is_red(node) ? "R" : "B");
+			if (parent)
+				seq_printf(m, "(Node ");
+			else
+				seq_printf(m, "Node ");
+
 			parent = node;
 			node = node->rb_left;
 			left = true;

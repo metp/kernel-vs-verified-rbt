@@ -1,6 +1,6 @@
 {-# LANGUAGE EmptyDataDecls, RankNTypes, ScopedTypeVariables #-}
 
-module RBT.Verified(Rbta, Rbt, empty, delete, insert, lookup, height, height_balanced) where {
+module RBT.Verified(Color, Tree, Cmp_val, isin, empty, delete, insert) where {
 
 import Prelude ((==), (/=), (<), (<=), (>=), (>), (+), (-), (*), (/), (**),
   (>>=), (>>), (=<<), (&&), (||), (^), (^^), (.), ($), ($!), (++), (!!), Eq,
@@ -11,235 +11,281 @@ import qualified Prelude;
 
 data Color = R | B deriving (Prelude.Read, Prelude.Show);
 
-data Rbta a b = Empty | Branch Color (Rbta a b) a b (Rbta a b)
+equal_color :: Color -> Color -> Bool;
+equal_color R B = False;
+equal_color B R = False;
+equal_color B B = True;
+equal_color R R = True;
+
+instance Eq Color where {
+  a == b = equal_color a b;
+};
+
+data Tree a = Leaf | Node (Tree a) a (Tree a)
   deriving (Prelude.Read, Prelude.Show);
 
-newtype Rbt b a = RBT (Rbta b a) deriving (Prelude.Read, Prelude.Show);
+data Cmp_val = LT | EQ | GT deriving (Prelude.Read, Prelude.Show);
 
-empty :: forall a b. (Prelude.Ord a) => Rbt a b;
-empty = RBT Empty;
+cmp :: forall a. (Eq a, Prelude.Ord a) => a -> a -> Cmp_val;
+cmp x y = (if x < y then LT else (if x == y then EQ else GT));
 
-balance :: forall a b. Rbta a b -> a -> b -> Rbta a b -> Rbta a b;
-balance (Branch R a w x b) s t (Branch R c y z d) =
-  Branch R (Branch B a w x b) s t (Branch B c y z d);
-balance (Branch R (Branch R a w x b) s t c) y z Empty =
-  Branch R (Branch B a w x b) s t (Branch B c y z Empty);
-balance (Branch R (Branch R a w x b) s t c) y z (Branch B va vb vc vd) =
-  Branch R (Branch B a w x b) s t (Branch B c y z (Branch B va vb vc vd));
-balance (Branch R Empty w x (Branch R b s t c)) y z Empty =
-  Branch R (Branch B Empty w x b) s t (Branch B c y z Empty);
-balance (Branch R (Branch B va vb vc vd) w x (Branch R b s t c)) y z Empty =
-  Branch R (Branch B (Branch B va vb vc vd) w x b) s t (Branch B c y z Empty);
-balance (Branch R Empty w x (Branch R b s t c)) y z (Branch B va vb vc vd) =
-  Branch R (Branch B Empty w x b) s t (Branch B c y z (Branch B va vb vc vd));
-balance (Branch R (Branch B ve vf vg vh) w x (Branch R b s t c)) y z
-  (Branch B va vb vc vd) =
-  Branch R (Branch B (Branch B ve vf vg vh) w x b) s t
-    (Branch B c y z (Branch B va vb vc vd));
-balance Empty w x (Branch R b s t (Branch R c y z d)) =
-  Branch R (Branch B Empty w x b) s t (Branch B c y z d);
-balance (Branch B va vb vc vd) w x (Branch R b s t (Branch R c y z d)) =
-  Branch R (Branch B (Branch B va vb vc vd) w x b) s t (Branch B c y z d);
-balance Empty w x (Branch R (Branch R b s t c) y z Empty) =
-  Branch R (Branch B Empty w x b) s t (Branch B c y z Empty);
-balance Empty w x (Branch R (Branch R b s t c) y z (Branch B va vb vc vd)) =
-  Branch R (Branch B Empty w x b) s t (Branch B c y z (Branch B va vb vc vd));
-balance (Branch B va vb vc vd) w x (Branch R (Branch R b s t c) y z Empty) =
-  Branch R (Branch B (Branch B va vb vc vd) w x b) s t (Branch B c y z Empty);
-balance (Branch B va vb vc vd) w x
-  (Branch R (Branch R b s t c) y z (Branch B ve vf vg vh)) =
-  Branch R (Branch B (Branch B va vb vc vd) w x b) s t
-    (Branch B c y z (Branch B ve vf vg vh));
-balance Empty s t Empty = Branch B Empty s t Empty;
-balance Empty s t (Branch B va vb vc vd) =
-  Branch B Empty s t (Branch B va vb vc vd);
-balance Empty s t (Branch v Empty vb vc Empty) =
-  Branch B Empty s t (Branch v Empty vb vc Empty);
-balance Empty s t (Branch v (Branch B ve vf vg vh) vb vc Empty) =
-  Branch B Empty s t (Branch v (Branch B ve vf vg vh) vb vc Empty);
-balance Empty s t (Branch v Empty vb vc (Branch B vf vg vh vi)) =
-  Branch B Empty s t (Branch v Empty vb vc (Branch B vf vg vh vi));
-balance Empty s t (Branch v (Branch B ve vj vk vl) vb vc (Branch B vf vg vh vi))
-  = Branch B Empty s t
-      (Branch v (Branch B ve vj vk vl) vb vc (Branch B vf vg vh vi));
-balance (Branch B va vb vc vd) s t Empty =
-  Branch B (Branch B va vb vc vd) s t Empty;
-balance (Branch B va vb vc vd) s t (Branch B ve vf vg vh) =
-  Branch B (Branch B va vb vc vd) s t (Branch B ve vf vg vh);
-balance (Branch B va vb vc vd) s t (Branch v Empty vf vg Empty) =
-  Branch B (Branch B va vb vc vd) s t (Branch v Empty vf vg Empty);
-balance (Branch B va vb vc vd) s t (Branch v (Branch B vi vj vk vl) vf vg Empty)
-  = Branch B (Branch B va vb vc vd) s t
-      (Branch v (Branch B vi vj vk vl) vf vg Empty);
-balance (Branch B va vb vc vd) s t (Branch v Empty vf vg (Branch B vj vk vl vm))
-  = Branch B (Branch B va vb vc vd) s t
-      (Branch v Empty vf vg (Branch B vj vk vl vm));
-balance (Branch B va vb vc vd) s t
-  (Branch v (Branch B vi vn vo vp) vf vg (Branch B vj vk vl vm)) =
-  Branch B (Branch B va vb vc vd) s t
-    (Branch v (Branch B vi vn vo vp) vf vg (Branch B vj vk vl vm));
-balance (Branch v Empty vb vc Empty) s t Empty =
-  Branch B (Branch v Empty vb vc Empty) s t Empty;
-balance (Branch v Empty vb vc (Branch B ve vf vg vh)) s t Empty =
-  Branch B (Branch v Empty vb vc (Branch B ve vf vg vh)) s t Empty;
-balance (Branch v (Branch B vf vg vh vi) vb vc Empty) s t Empty =
-  Branch B (Branch v (Branch B vf vg vh vi) vb vc Empty) s t Empty;
-balance (Branch v (Branch B vf vg vh vi) vb vc (Branch B ve vj vk vl)) s t Empty
-  = Branch B (Branch v (Branch B vf vg vh vi) vb vc (Branch B ve vj vk vl)) s t
-      Empty;
-balance (Branch v Empty vf vg Empty) s t (Branch B va vb vc vd) =
-  Branch B (Branch v Empty vf vg Empty) s t (Branch B va vb vc vd);
-balance (Branch v Empty vf vg (Branch B vi vj vk vl)) s t (Branch B va vb vc vd)
-  = Branch B (Branch v Empty vf vg (Branch B vi vj vk vl)) s t
-      (Branch B va vb vc vd);
-balance (Branch v (Branch B vj vk vl vm) vf vg Empty) s t (Branch B va vb vc vd)
-  = Branch B (Branch v (Branch B vj vk vl vm) vf vg Empty) s t
-      (Branch B va vb vc vd);
-balance (Branch v (Branch B vj vk vl vm) vf vg (Branch B vi vn vo vp)) s t
-  (Branch B va vb vc vd) =
-  Branch B (Branch v (Branch B vj vk vl vm) vf vg (Branch B vi vn vo vp)) s t
-    (Branch B va vb vc vd);
+paint :: forall a. Color -> Tree (a, Color) -> Tree (a, Color);
+paint c Leaf = Leaf;
+paint c (Node l (a, uu) r) = Node l (a, c) r;
 
-paint :: forall a b. Color -> Rbta a b -> Rbta a b;
-paint c Empty = Empty;
-paint c (Branch uu l k v r) = Branch c l k v r;
+baliR :: forall a. Tree (a, Color) -> a -> Tree (a, Color) -> Tree (a, Color);
+baliR (Node t1 (u, R) t2) g (Node t3 (p, R) (Node t4 (n, R) t5)) =
+  Node (Node t1 (u, B) t2) (g, R)
+    (Node t3 (p, B) (Node t4 (n, R) t5));
+baliR (Node t1 (u, R) t2) g (Node (Node t3 (n, R) t4) (p, R) Leaf) =
+  Node (Node t1 (u, B) t2) (g, R)
+    (Node (Node t3 (n, R) t4) (p, B) Leaf);
+baliR (Node t1 (u, R) t2) g
+  (Node (Node t3 (n, R) t4) (p, R) (Node v (vc, B) vb)) =
+  Node (Node t1 (u, B) t2) (g, R)
+    (Node (Node t3 (n, R) t4) (p, B) (Node v (vc, B) vb));
+baliR Leaf g (Node (Node t2 (n, R) t3) (p, R) t4) =
+  Node (Node Leaf (g, R) t2) (n, B) (Node t3 (p, R) t4);
+baliR (Node v (vc, B) vb) g (Node (Node t2 (n, R) t3) (p, R) t4) =
+  Node (Node (Node v (vc, B) vb) (g, R) t2) (n, B)
+    (Node t3 (p, R) t4);
+baliR Leaf g (Node Leaf (p, R) (Node t3 (n, R) t4)) =
+  Node (Node Leaf (g, R) Leaf) (p, B) (Node t3 (n, R) t4);
+baliR Leaf g (Node (Node v (vc, B) vb) (p, R) (Node t3 (n, R) t4)) =
+  Node (Node Leaf (g, R) (Node v (vc, B) vb)) (p, B)
+    (Node t3 (n, R) t4);
+baliR (Node v (vc, B) vb) g (Node Leaf (p, R) (Node t3 (n, R) t4)) =
+  Node (Node (Node v (vc, B) vb) (g, R) Leaf) (p, B)
+    (Node t3 (n, R) t4);
+baliR (Node v (vc, B) vb) g
+  (Node (Node va (vf, B) ve) (p, R) (Node t3 (n, R) t4)) =
+  Node (Node (Node v (vc, B) vb) (g, R) (Node va (vf, B) ve))
+    (p, B) (Node t3 (n, R) t4);
+baliR Leaf a Leaf = Node Leaf (a, B) Leaf;
+baliR Leaf a (Node Leaf (v, B) vb) =
+  Node Leaf (a, B) (Node Leaf (v, B) vb);
+baliR Leaf a (Node Leaf va Leaf) = Node Leaf (a, B) (Node Leaf va Leaf);
+baliR Leaf a (Node Leaf va (Node v (ve, B) vd)) =
+  Node Leaf (a, B) (Node Leaf va (Node v (ve, B) vd));
+baliR Leaf a (Node (Node vc (vf, B) ve) (v, B) vb) =
+  Node Leaf (a, B) (Node (Node vc (vf, B) ve) (v, B) vb);
+baliR Leaf a (Node (Node vc (vf, B) ve) va Leaf) =
+  Node Leaf (a, B) (Node (Node vc (vf, B) ve) va Leaf);
+baliR Leaf a (Node (Node vc (vf, B) ve) va (Node v (vh, B) vg)) =
+  Node Leaf (a, B)
+    (Node (Node vc (vf, B) ve) va (Node v (vh, B) vg));
+baliR Leaf a (Node v (vc, B) vb) =
+  Node Leaf (a, B) (Node v (vc, B) vb);
+baliR (Node v (vc, B) vb) a Leaf =
+  Node (Node v (vc, B) vb) (a, B) Leaf;
+baliR (Node v (vc, B) vb) a (Node Leaf (va, B) ve) =
+  Node (Node v (vc, B) vb) (a, B) (Node Leaf (va, B) ve);
+baliR (Node v (vc, B) vb) a (Node Leaf vd Leaf) =
+  Node (Node v (vc, B) vb) (a, B) (Node Leaf vd Leaf);
+baliR (Node v (vc, B) vb) a (Node Leaf vd (Node va (vh, B) vg)) =
+  Node (Node v (vc, B) vb) (a, B)
+    (Node Leaf vd (Node va (vh, B) vg));
+baliR (Node v (vc, B) vb) a (Node (Node vf (vi, B) vh) (va, B) ve) =
+  Node (Node v (vc, B) vb) (a, B)
+    (Node (Node vf (vi, B) vh) (va, B) ve);
+baliR (Node v (vc, B) vb) a (Node (Node vf (vi, B) vh) vd Leaf) =
+  Node (Node v (vc, B) vb) (a, B)
+    (Node (Node vf (vi, B) vh) vd Leaf);
+baliR (Node v (vc, B) vb) a
+  (Node (Node vf (vi, B) vh) vd (Node va (vk, B) vj)) =
+  Node (Node v (vc, B) vb) (a, B)
+    (Node (Node vf (vi, B) vh) vd (Node va (vk, B) vj));
+baliR (Node v (vc, B) vb) a (Node va (vf, B) ve) =
+  Node (Node v (vc, B) vb) (a, B) (Node va (vf, B) ve);
+baliR t1 a Leaf = Node t1 (a, B) Leaf;
+baliR t1 a (Node v (vc, B) vb) = Node t1 (a, B) (Node v (vc, B) vb);
+baliR t1 a (Node Leaf va Leaf) = Node t1 (a, B) (Node Leaf va Leaf);
+baliR t1 a (Node (Node vb (ve, B) vd) va Leaf) =
+  Node t1 (a, B) (Node (Node vb (ve, B) vd) va Leaf);
+baliR t1 a (Node Leaf va (Node vc (vf, B) ve)) =
+  Node t1 (a, B) (Node Leaf va (Node vc (vf, B) ve));
+baliR t1 a (Node (Node vb (vh, B) vg) va (Node vc (vf, B) ve)) =
+  Node t1 (a, B)
+    (Node (Node vb (vh, B) vg) va (Node vc (vf, B) ve));
 
-balance_right :: forall a b. Rbta a b -> a -> b -> Rbta a b -> Rbta a b;
-balance_right a k x (Branch R b s y c) = Branch R a k x (Branch B b s y c);
-balance_right (Branch B a k x b) s y Empty =
-  balance (Branch R a k x b) s y Empty;
-balance_right (Branch B a k x b) s y (Branch B va vb vc vd) =
-  balance (Branch R a k x b) s y (Branch B va vb vc vd);
-balance_right (Branch R a k x (Branch B b s y c)) t z Empty =
-  Branch R (balance (paint R a) k x b) s y (Branch B c t z Empty);
-balance_right (Branch R a k x (Branch B b s y c)) t z (Branch B va vb vc vd) =
-  Branch R (balance (paint R a) k x b) s y
-    (Branch B c t z (Branch B va vb vc vd));
-balance_right Empty k x Empty = Empty;
-balance_right (Branch R va vb vc Empty) k x Empty = Empty;
-balance_right (Branch R va vb vc (Branch R ve vf vg vh)) k x Empty = Empty;
-balance_right Empty k x (Branch B va vb vc vd) = Empty;
-balance_right (Branch R ve vf vg Empty) k x (Branch B va vb vc vd) = Empty;
-balance_right (Branch R ve vf vg (Branch R vi vj vk vl)) k x
-  (Branch B va vb vc vd) = Empty;
+baldL :: forall a. Tree (a, Color) -> a -> Tree (a, Color) -> Tree (a, Color);
+baldL (Node t1 (a, R) t2) b t3 = Node (Node t1 (a, B) t2) (b, R) t3;
+baldL Leaf a (Node t2 (b, B) t3) = baliR Leaf a (Node t2 (b, R) t3);
+baldL (Node v (vc, B) vb) a (Node t2 (b, B) t3) =
+  baliR (Node v (vc, B) vb) a (Node t2 (b, R) t3);
+baldL Leaf a (Node (Node t2 (b, B) t3) (c, R) t4) =
+  Node (Node Leaf (a, B) t2) (b, R) (baliR t3 c (paint R t4));
+baldL (Node v (vc, B) vb) a (Node (Node t2 (b, B) t3) (c, R) t4) =
+  Node (Node (Node v (vc, B) vb) (a, B) t2) (b, R)
+    (baliR t3 c (paint R t4));
+baldL Leaf a Leaf = Node Leaf (a, R) Leaf;
+baldL Leaf a (Node Leaf (vc, R) vb) =
+  Node Leaf (a, R) (Node Leaf (vc, R) vb);
+baldL Leaf a (Node (Node va (vf, R) ve) (vc, R) vb) =
+  Node Leaf (a, R) (Node (Node va (vf, R) ve) (vc, R) vb);
+baldL (Node v (vc, B) vb) a Leaf =
+  Node (Node v (vc, B) vb) (a, R) Leaf;
+baldL (Node v (vc, B) vb) a (Node Leaf (vf, R) ve) =
+  Node (Node v (vc, B) vb) (a, R) (Node Leaf (vf, R) ve);
+baldL (Node v (vc, B) vb) a (Node (Node vd (vi, R) vh) (vf, R) ve) =
+  Node (Node v (vc, B) vb) (a, R)
+    (Node (Node vd (vi, R) vh) (vf, R) ve);
 
-balance_left :: forall a b. Rbta a b -> a -> b -> Rbta a b -> Rbta a b;
-balance_left (Branch R a k x b) s y c = Branch R (Branch B a k x b) s y c;
-balance_left Empty k x (Branch B a s y b) =
-  balance Empty k x (Branch R a s y b);
-balance_left (Branch B va vb vc vd) k x (Branch B a s y b) =
-  balance (Branch B va vb vc vd) k x (Branch R a s y b);
-balance_left Empty k x (Branch R (Branch B a s y b) t z c) =
-  Branch R (Branch B Empty k x a) s y (balance b t z (paint R c));
-balance_left (Branch B va vb vc vd) k x (Branch R (Branch B a s y b) t z c) =
-  Branch R (Branch B (Branch B va vb vc vd) k x a) s y
-    (balance b t z (paint R c));
-balance_left Empty k x Empty = Empty;
-balance_left Empty k x (Branch R Empty vb vc vd) = Empty;
-balance_left Empty k x (Branch R (Branch R ve vf vg vh) vb vc vd) = Empty;
-balance_left (Branch B va vb vc vd) k x Empty = Empty;
-balance_left (Branch B va vb vc vd) k x (Branch R Empty vf vg vh) = Empty;
-balance_left (Branch B va vb vc vd) k x
-  (Branch R (Branch R vi vj vk vl) vf vg vh) = Empty;
-
-combine :: forall a b. Rbta a b -> Rbta a b -> Rbta a b;
-combine Empty x = x;
-combine (Branch v va vb vc vd) Empty = Branch v va vb vc vd;
-combine (Branch R a k x b) (Branch R c s y d) =
-  (case combine b c of {
-    Empty -> Branch R a k x (Branch R Empty s y d);
-    Branch R b2 t z c2 -> Branch R (Branch R a k x b2) t z (Branch R c2 s y d);
-    Branch B b2 t z c2 -> Branch R a k x (Branch R (Branch B b2 t z c2) s y d);
+join :: forall a. Tree (a, Color) -> Tree (a, Color) -> Tree (a, Color);
+join Leaf t = t;
+join (Node v va vb) Leaf = Node v va vb;
+join (Node t1 (a, R) t2) (Node t3 (c, R) t4) =
+  (case join t2 t3 of {
+    Leaf -> Node t1 (a, R) (Node Leaf (c, R) t4);
+    Node u2 (b, R) u3 ->
+      Node (Node t1 (a, R) u2) (b, R) (Node u3 (c, R) t4);
+    Node u2 (b, B) u3 ->
+      Node t1 (a, R) (Node (Node u2 (b, B) u3) (c, R) t4);
   });
-combine (Branch B a k x b) (Branch B c s y d) =
-  (case combine b c of {
-    Empty -> balance_left a k x (Branch B Empty s y d);
-    Branch R b2 t z c2 -> Branch R (Branch B a k x b2) t z (Branch B c2 s y d);
-    Branch B b2 t z c2 ->
-      balance_left a k x (Branch B (Branch B b2 t z c2) s y d);
+join (Node t1 (a, B) t2) (Node t3 (c, B) t4) =
+  (case join t2 t3 of {
+    Leaf -> baldL t1 a (Node Leaf (c, B) t4);
+    Node u2 (b, R) u3 ->
+      Node (Node t1 (a, B) u2) (b, R) (Node u3 (c, B) t4);
+    Node u2 (b, B) u3 ->
+      baldL t1 a (Node (Node u2 (b, B) u3) (c, B) t4);
   });
-combine (Branch B va vb vc vd) (Branch R b k x c) =
-  Branch R (combine (Branch B va vb vc vd) b) k x c;
-combine (Branch R a k x b) (Branch B va vb vc vd) =
-  Branch R a k x (combine b (Branch B va vb vc vd));
+join (Node v (vc, B) vb) (Node t2 (a, R) t3) =
+  Node (join (Node v (vc, B) vb) t2) (a, R) t3;
+join (Node t1 (a, R) t2) (Node v (vc, B) vb) =
+  Node t1 (a, R) (join t2 (Node v (vc, B) vb));
 
-rbt_del :: forall a b. (Prelude.Ord a) => a -> Rbta a b -> Rbta a b;
-rbt_del x Empty = Empty;
-rbt_del x (Branch c a y s b) =
-  (if x < y then rbt_del_from_left x a y s b
-    else (if y < x then rbt_del_from_right x a y s b else combine a b));
+baliL :: forall a. Tree (a, Color) -> a -> Tree (a, Color) -> Tree (a, Color);
+baliL (Node (Node t1 (n, R) t2) (p, R) t3) g (Node t4 (u, R) t5) =
+  Node (Node (Node t1 (n, R) t2) (p, B) t3) (g, R)
+    (Node t4 (u, B) t5);
+baliL (Node Leaf (p, R) (Node t2 (n, R) t3)) g (Node t4 (u, R) t5) =
+  Node (Node Leaf (p, B) (Node t2 (n, R) t3)) (g, R)
+    (Node t4 (u, B) t5);
+baliL (Node (Node v (vc, B) vb) (p, R) (Node t2 (n, R) t3)) g
+  (Node t4 (u, R) t5) =
+  Node (Node (Node v (vc, B) vb) (p, B) (Node t2 (n, R) t3)) (g, R)
+    (Node t4 (u, B) t5);
+baliL (Node Leaf (p, R) (Node t2 (n, R) t3)) g Leaf =
+  Node (Node Leaf (p, R) t2) (n, B) (Node t3 (g, R) Leaf);
+baliL (Node Leaf (p, R) (Node t2 (n, R) t3)) g (Node v (vc, B) vb) =
+  Node (Node Leaf (p, R) t2) (n, B)
+    (Node t3 (g, R) (Node v (vc, B) vb));
+baliL (Node (Node v (vc, B) vb) (p, R) (Node t2 (n, R) t3)) g Leaf =
+  Node (Node (Node v (vc, B) vb) (p, R) t2) (n, B)
+    (Node t3 (g, R) Leaf);
+baliL (Node (Node v (vc, B) vb) (p, R) (Node t2 (n, R) t3)) g
+  (Node va (vf, B) ve) =
+  Node (Node (Node v (vc, B) vb) (p, R) t2) (n, B)
+    (Node t3 (g, R) (Node va (vf, B) ve));
+baliL (Node t1 (p, R) (Node t2 (n, R) t3)) g Leaf =
+  Node (Node t1 (p, R) t2) (n, B) (Node t3 (g, R) Leaf);
+baliL (Node t1 (p, R) (Node t2 (n, R) t3)) g (Node v (vc, B) vb) =
+  Node (Node t1 (p, R) t2) (n, B)
+    (Node t3 (g, R) (Node v (vc, B) vb));
+baliL (Node (Node t1 (n, R) t2) (p, R) Leaf) g Leaf =
+  Node (Node t1 (n, R) t2) (p, B) (Node Leaf (g, R) Leaf);
+baliL (Node (Node t1 (n, R) t2) (p, R) (Node v (vc, B) vb)) g Leaf =
+  Node (Node t1 (n, R) t2) (p, B)
+    (Node (Node v (vc, B) vb) (g, R) Leaf);
+baliL (Node (Node t1 (n, R) t2) (p, R) Leaf) g (Node v (vc, B) vb) =
+  Node (Node t1 (n, R) t2) (p, B)
+    (Node Leaf (g, R) (Node v (vc, B) vb));
+baliL (Node (Node t1 (n, R) t2) (p, R) (Node va (vf, B) ve)) g
+  (Node v (vc, B) vb) =
+  Node (Node t1 (n, R) t2) (p, B)
+    (Node (Node va (vf, B) ve) (g, R) (Node v (vc, B) vb));
+baliL Leaf a t2 = Node Leaf (a, B) t2;
+baliL (Node Leaf (v, B) vb) a t2 =
+  Node (Node Leaf (v, B) vb) (a, B) t2;
+baliL (Node Leaf va Leaf) a t2 = Node (Node Leaf va Leaf) (a, B) t2;
+baliL (Node Leaf va (Node v (ve, B) vd)) a t2 =
+  Node (Node Leaf va (Node v (ve, B) vd)) (a, B) t2;
+baliL (Node (Node vc (vf, B) ve) (v, B) vb) a t2 =
+  Node (Node (Node vc (vf, B) ve) (v, B) vb) (a, B) t2;
+baliL (Node (Node vc (vf, B) ve) va Leaf) a t2 =
+  Node (Node (Node vc (vf, B) ve) va Leaf) (a, B) t2;
+baliL (Node (Node vc (vf, B) ve) va (Node v (vh, B) vg)) a t2 =
+  Node (Node (Node vc (vf, B) ve) va (Node v (vh, B) vg)) (a, B) t2;
+baliL (Node v (vc, B) vb) a t2 = Node (Node v (vc, B) vb) (a, B) t2;
 
-rbt_del_from_left ::
-  forall a b.
-    (Prelude.Ord a) => a -> Rbta a b -> a -> b -> Rbta a b -> Rbta a b;
-rbt_del_from_left x (Branch B lt z v rt) y s b =
-  balance_left (rbt_del x (Branch B lt z v rt)) y s b;
-rbt_del_from_left x Empty y s b = Branch R (rbt_del x Empty) y s b;
-rbt_del_from_left x (Branch R va vb vc vd) y s b =
-  Branch R (rbt_del x (Branch R va vb vc vd)) y s b;
+baldR :: forall a. Tree (a, Color) -> a -> Tree (a, Color) -> Tree (a, Color);
+baldR t1 a (Node t2 (b, R) t3) = Node t1 (a, R) (Node t2 (b, B) t3);
+baldR (Node t1 (a, B) t2) b Leaf = baliL (Node t1 (a, R) t2) b Leaf;
+baldR (Node t1 (a, B) t2) b (Node v (vc, B) vb) =
+  baliL (Node t1 (a, R) t2) b (Node v (vc, B) vb);
+baldR (Node t1 (a, R) (Node t2 (b, B) t3)) c Leaf =
+  Node (baliL (paint R t1) a t2) (b, R) (Node t3 (c, B) Leaf);
+baldR (Node t1 (a, R) (Node t2 (b, B) t3)) c (Node v (vc, B) vb) =
+  Node (baliL (paint R t1) a t2) (b, R)
+    (Node t3 (c, B) (Node v (vc, B) vb));
+baldR Leaf a Leaf = Node Leaf (a, R) Leaf;
+baldR (Node v (vc, R) Leaf) a Leaf =
+  Node (Node v (vc, R) Leaf) (a, R) Leaf;
+baldR (Node v (vc, R) (Node va (vf, R) ve)) a Leaf =
+  Node (Node v (vc, R) (Node va (vf, R) ve)) (a, R) Leaf;
+baldR Leaf a (Node v (vc, B) vb) =
+  Node Leaf (a, R) (Node v (vc, B) vb);
+baldR (Node va (vf, R) Leaf) a (Node v (vc, B) vb) =
+  Node (Node va (vf, R) Leaf) (a, R) (Node v (vc, B) vb);
+baldR (Node va (vf, R) (Node vd (vi, R) vh)) a (Node v (vc, B) vb) =
+  Node (Node va (vf, R) (Node vd (vi, R) vh)) (a, R)
+    (Node v (vc, B) vb);
 
-rbt_del_from_right ::
-  forall a b.
-    (Prelude.Ord a) => a -> Rbta a b -> a -> b -> Rbta a b -> Rbta a b;
-rbt_del_from_right x a y s (Branch B lt z v rt) =
-  balance_right a y s (rbt_del x (Branch B lt z v rt));
-rbt_del_from_right x a y s Empty = Branch R a y s (rbt_del x Empty);
-rbt_del_from_right x a y s (Branch R va vb vc vd) =
-  Branch R a y s (rbt_del x (Branch R va vb vc vd));
+isin :: forall a b. (Eq a, Prelude.Ord a) => Tree (a, b) -> a -> Bool;
+isin Leaf x = False;
+isin (Node l (a, uu) r) x = (case cmp x a of {
+                              LT -> isin l x;
+                              EQ -> True;
+                              GT -> isin r x;
+                            });
 
-rbt_delete :: forall a b. (Prelude.Ord a) => a -> Rbta a b -> Rbta a b;
-rbt_delete k t = paint B (rbt_del k t);
+equal_tree :: forall a. (Eq a) => Tree a -> Tree a -> Bool;
+equal_tree Leaf (Node x21 x22 x23) = False;
+equal_tree (Node x21 x22 x23) Leaf = False;
+equal_tree (Node x21 x22 x23) (Node y21 y22 y23) =
+  equal_tree x21 y21 && x22 == y22 && equal_tree x23 y23;
+equal_tree Leaf Leaf = True;
 
-impl_of :: forall b a. (Prelude.Ord b) => Rbt b a -> Rbta b a;
-impl_of (RBT x) = x;
+color :: forall a. Tree (a, Color) -> Color;
+color Leaf = B;
+color (Node uu (uv, c) uw) = c;
 
-delete :: forall a b. (Prelude.Ord a) => a -> Rbt a b -> Rbt a b;
-delete xb xc = RBT (rbt_delete xb (impl_of xc));
+del ::
+  forall a. (Eq a, Prelude.Ord a) => a -> Tree (a, Color) -> Tree (a, Color);
+del x Leaf = Leaf;
+del x (Node l (a, uu) r) =
+  (case cmp x a of {
+    LT -> (if not (equal_tree l Leaf) && equal_color (color l) B
+            then baldL (del x l) a r else Node (del x l) (a, R) r);
+    EQ -> join l r;
+    GT -> (if not (equal_tree r Leaf) && equal_color (color r) B
+            then baldR l a (del x r) else Node l (a, R) (del x r));
+  });
 
-rbt_ins ::
-  forall a b.
-    (Prelude.Ord a) => (a -> b -> b -> b) -> a -> b -> Rbta a b -> Rbta a b;
-rbt_ins f k v Empty = Branch R Empty k v Empty;
-rbt_ins f k v (Branch B l x y r) =
-  (if k < x then balance (rbt_ins f k v l) x y r
-    else (if x < k then balance l x y (rbt_ins f k v r)
-           else Branch B l x (f k y v) r));
-rbt_ins f k v (Branch R l x y r) =
-  (if k < x then Branch R (rbt_ins f k v l) x y r
-    else (if x < k then Branch R l x y (rbt_ins f k v r)
-           else Branch R l x (f k y v) r));
+ins ::
+  forall a. (Eq a, Prelude.Ord a) => a -> Tree (a, Color) -> Tree (a, Color);
+ins x Leaf = Node Leaf (x, R) Leaf;
+ins x (Node l (a, B) r) = (case cmp x a of {
+                                LT -> baliL (ins x l) a r;
+                                EQ -> Node l (a, B) r;
+                                GT -> baliR l a (ins x r);
+                              });
+ins x (Node l (a, R) r) = (case cmp x a of {
+                              LT -> Node (ins x l) (a, R) r;
+                              EQ -> Node l (a, R) r;
+                              GT -> Node l (a, R) (ins x r);
+                            });
 
-rbt_insert_with_key ::
-  forall a b.
-    (Prelude.Ord a) => (a -> b -> b -> b) -> a -> b -> Rbta a b -> Rbta a b;
-rbt_insert_with_key f k v t = paint B (rbt_ins f k v t);
+empty :: forall a. Tree (a, Color);
+empty = Leaf;
 
-rbt_insert :: forall a b. (Prelude.Ord a) => a -> b -> Rbta a b -> Rbta a b;
-rbt_insert = rbt_insert_with_key (\ _ _ nv -> nv);
+delete ::
+  forall a. (Eq a, Prelude.Ord a) => a -> Tree (a, Color) -> Tree (a, Color);
+delete x t = paint B (del x t);
 
-insert :: forall a b. (Prelude.Ord a) => a -> b -> Rbt a b -> Rbt a b;
-insert xc xd xe = RBT (rbt_insert xc xd (impl_of xe));
-
-rbt_lookup :: forall a b. (Prelude.Ord a) => Rbta a b -> a -> Maybe b;
-rbt_lookup Empty k = Nothing;
-rbt_lookup (Branch uu l x y r) k =
-  (if k < x then rbt_lookup l k
-    else (if x < k then rbt_lookup r k else Just y));
-
-lookup :: forall a b. (Prelude.Ord a) => Rbt a b -> a -> Maybe b;
-lookup x = rbt_lookup (impl_of x);
-
-rbt_height :: (Integer -> Integer -> Integer) -> Rbta a b -> Integer;
-rbt_height _ Empty = 0;
-rbt_height f (Branch _ l _ _ r)  = 1 + f (rbt_height f l) (rbt_height f r);
-
-rbt_height_balenced :: Rbta a b -> Bool; 
-rbt_height_balenced t = rbt_height Prelude.max t <= 2 * rbt_height Prelude.min t;
-
-height_balanced :: Prelude.Ord a => Rbt a b -> Bool;
-height_balanced = rbt_height_balenced . impl_of;
-
-height :: Prelude.Ord a => (Integer -> Integer -> Integer) -> Rbt a b -> Integer;
-height f = rbt_height f . impl_of;
+insert ::
+  forall a. (Eq a, Prelude.Ord a) => a -> Tree (a, Color) -> Tree (a, Color);
+insert x t = paint B (ins x t);
 
 }

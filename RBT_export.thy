@@ -1,10 +1,10 @@
-theory RBT_export
-imports "HOL-Library.RBT" HOL.Orderings
+theory RBT_export  
+imports
+  RBT
+  RBT_Set
+  "HOL-Data_Structures.Isin2"
+  HOL.Orderings
 begin
-
-term "RBT.insert"
-definition insert_integer :: "integer \<Rightarrow> integer \<Rightarrow> (integer, integer) RBT.rbt \<Rightarrow> (integer, integer) RBT.rbt" where
-"insert_integer = RBT.insert"
 
 code_printing
 (* This mapping is mathematically correct *)
@@ -21,10 +21,10 @@ However that's fine because all ordered types in the RBT interface are linear or
 (*| class_instance integer :: linorder \<rightharpoonup> (Haskell) -*)
 
 export_code
-  RBT.insert
-  RBT.delete
-  RBT.lookup
-  RBT.empty
-in Haskell module_name RBT (string_classes)
+  RBT_Set.empty
+  RBT_Set.insert
+  RBT_Set.delete
+  Isin2.isin
+in Haskell module_name RBT.Verified (string_classes)
 
 end

@@ -1,53 +1,61 @@
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ApplicativeDo              #-}
+
 module Main where
 
-import RBT.Verified (Rbt, empty, height_balanced, height)
+import RBT.Verified (Tree, Color)
+import qualified RBT.Verified as RBT (empty)
 import qualified RBT.Verified as Verified (insert, delete)
 import qualified RBT.Kernel as Kernel (insert, delete, reset)
-import Control.Monad (when, unless)
+import Control.Monad (when, unless, foldM_)
 import System.Environment (getArgs)
+import System.Random
+import Data.List
+import Options.Applicative
+
+data Options = Options
+  { runs :: Int
+  , seed :: Int
+  , verbose :: Bool }
+
+options :: ParserInfo Options
+options = info (opts <**> helper) desc where
+  desc = fullDesc <> header "Userspace testing harness for the Linux red-black tree implementation"
+  opts = do
+    verbose    <- switch $ short 'v' <> help "verbose"
+    runs       <- option auto $ short 'n' <> metavar "<runs>" <> help "Number of runs"
+    seed       <- option auto $ short 's' <> metavar "<seed>" <> showDefault <> value 42
+                  <> help "Seed for the pseudo-random-number generator"
+    pure Options {..}
 
 main :: IO ()
 main = do
+  opts <- execParser options
   Kernel.reset
-  n <- read . head <$> getArgs
-  testLoop [1..n] empty
+  case tokenRange $ runs opts of
+    Nothing -> return ()
+    Just range -> do
+      let numbers = take (runs opts) $ nub $ unfoldr (Just . uniformR range) $ mkStdGen $ seed opts
+      foldM_ (test $ verbose opts)  RBT.empty numbers
 
-type IRbt = Rbt Integer Integer
-
-rbtLoop :: IRbt -> IO ()
-rbtLoop tree = do
-  cmd <- getLine
-
-  when (cmd == "insert") $ do
-    key <- read <$> getLine
-    value <- read <$> getLine
-    let newTree = Verified.insert key value tree
-    print newTree
-    rbtLoop newTree
-
-  when (cmd == "delete") $ do
-    key <- read <$> getLine
-    let newTree = Verified.delete key tree
-    print newTree
-    rbtLoop newTree
-
-testLoop :: [Integer] -> IRbt -> IO ()
-testLoop [] _ = return ()
-testLoop (k:ks) tree = do
-  let verifiedTree = Verified.insert k 0 tree
-  kernelTree <- Kernel.insert k 0
---  when (show verifiedTree /= show kernelTree) $ do
---  unless (height_balanced kernelTree) $ do
-  when True $ do
-    putStrLn $ "Trees after inserting from 1 to " ++ show k
+test :: Bool -> Tree (Int, Color) -> Int -> IO (Tree (Int, Color))
+test verbose tree k = do
+  let verifiedTree = Verified.insert k tree
+  kernelTree <- Kernel.insert k
+  when (verbose || show verifiedTree /= show kernelTree) $ do
+    putStrLn $ "Trees after inserting " ++ show k
     putStrLn $ "Verified: " ++ show verifiedTree
     putStrLn $ "Kernel:   " ++ show kernelTree
     putStrLn $ "Diff:     " ++ diff (show verifiedTree) (show kernelTree)
-    putStrLn $ "Verified: height_balanced = " ++ show (height_balanced verifiedTree) ++ " " ++ show (height max verifiedTree) ++ " " ++ show (height min verifiedTree)
-    putStrLn $ "Kernel:   height_balanced = " ++ show (height_balanced kernelTree) ++ " " ++ show (height max kernelTree) ++ " " ++ show (height min kernelTree)
     putStrLn ""
-
-  testLoop ks verifiedTree
+  return verifiedTree
 
 diff :: String -> String -> String
-diff as bs = concatMap (\(a,b) -> if a == b then "." else "X" ) (zip as bs) ++ concat (replicate (abs $ length as - length bs) ".")
+diff as bs = [if a == b then '.' else 'X' | (a,b) <- zip as bs] ++ replicate (abs $ length as - length bs) '.'
+
+tokenRange :: Int -> Maybe (Int,Int)
+tokenRange n | n < 1 = Nothing
+tokenRange n | n < 10 = Just (0,9)
+tokenRange n = do 
+  d <- elemIndex 0 (iterate (`div` 10) n)
+  return (10^(d - 1), 10^d - 1)
