@@ -11,6 +11,7 @@ import Control.Monad (when, unless, foldM_)
 import System.Environment (getArgs)
 import System.Random
 import Data.List
+import Data.Maybe
 import Options.Applicative
 
 data Options = Options
@@ -18,12 +19,17 @@ data Options = Options
   , seed :: Int
   , verbose :: Bool }
 
+naturalParser :: ReadM Int
+naturalParser = eitherReader $ \s -> if read s >= 0
+  then Right $ read s
+  else Left "Not a positive value"
+
 options :: ParserInfo Options
 options = info (opts <**> helper) desc where
   desc = fullDesc <> header "Userspace testing harness for the Linux red-black tree implementation"
   opts = do
     verbose    <- switch $ short 'v' <> help "verbose"
-    runs       <- option auto $ short 'n' <> metavar "<runs>" <> help "Number of runs"
+    runs       <- option naturalParser $ short 'n' <> metavar "<runs>" <> help "Number of runs"
     seed       <- option auto $ short 's' <> metavar "<seed>" <> showDefault <> value 42
                   <> help "Seed for the pseudo-random-number generator"
     pure Options {..}
@@ -32,11 +38,10 @@ main :: IO ()
 main = do
   opts <- execParser options
   Kernel.reset
-  case tokenRange $ runs opts of
-    Nothing -> return ()
-    Just range -> do
-      let numbers = take (runs opts) $ nub $ unfoldr (Just . uniformR range) $ mkStdGen $ seed opts
-      foldM_ (test $ verbose opts)  RBT.empty numbers
+  let gen = mkStdGen $ seed opts
+  let range = tokenRange $ runs opts
+  let numbers = take (runs opts) $ nub $ unfoldr (Just . uniformR range) gen
+  foldM_ (test $ verbose opts)  RBT.empty numbers
 
 test :: Bool -> Tree (Int, Color) -> Int -> IO (Tree (Int, Color))
 test verbose tree k = do
@@ -53,9 +58,7 @@ test verbose tree k = do
 diff :: String -> String -> String
 diff as bs = [if a == b then '.' else 'X' | (a,b) <- zip as bs] ++ replicate (abs $ length as - length bs) '.'
 
-tokenRange :: Int -> Maybe (Int,Int)
-tokenRange n | n < 1 = Nothing
-tokenRange n | n < 10 = Just (0,9)
-tokenRange n = do 
-  d <- elemIndex 0 (iterate (`div` 10) n)
-  return (10^(d - 1), 10^d - 1)
+tokenRange :: Int -> (Int,Int)
+tokenRange n | n < 10 = (0,9)
+tokenRange n = (10^(d - 1), 10^d - 1)
+  where d = fromJust $ elemIndex 0 (iterate (`div` 10) n)
