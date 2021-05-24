@@ -13,12 +13,11 @@
 
 static struct dentry *rbt_if_root;
 static struct rb_root rbt = RB_ROOT;
-static u64 input_key, input_value;
+static u64 input_key;
 
 struct data {
 	struct rb_node node;
 	u64 key;
-	u64 value;
 };
 
 #define data_from_node(from) (rb_entry(from, struct data, node))
@@ -106,7 +105,6 @@ ssize_t cmd_exec(struct file *file, const char __user *ubuf, size_t len, loff_t 
 	case CMD_INSERT:
 		data = kzalloc(sizeof(*data), GFP_KERNEL);
 		data->key = input_key;
-		data->value = input_value;
 		rb_add(&data->node, &rbt, data_less);
 		break;
 	case CMD_DELETE:
@@ -153,7 +151,6 @@ int init_module(void)
 
 	debugfs_create_file("cmd", 0644, rbt_if_root, NULL, &cmd_fops);
 	debugfs_create_u64("key", 0644, rbt_if_root, &input_key);
-	debugfs_create_u64("value", 0644, rbt_if_root, &input_value);
 	return 0;
 }
 
