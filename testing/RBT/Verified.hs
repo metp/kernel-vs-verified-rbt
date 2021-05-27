@@ -1,6 +1,9 @@
 {-# LANGUAGE EmptyDataDecls, RankNTypes, ScopedTypeVariables #-}
 
-module RBT.Verified(Color, Tree, Cmp_val, isin, empty, delete, insert) where {
+module
+  RBT.Verified(Color, Nat, Tree, invc, invh, empty, inorder, delete, insert,
+                rootBlack, rbt)
+  where {
 
 import Prelude ((==), (/=), (<), (<=), (>=), (>), (+), (-), (*), (/), (**),
   (>>=), (>>), (=<<), (&&), (||), (^), (^^), (.), ($), ($!), (++), (!!), Eq,
@@ -21,6 +24,10 @@ instance Eq Color where {
   a == b = equal_color a b;
 };
 
+newtype Nat = Nat Integer deriving (Prelude.Read, Prelude.Show);
+
+data Num = One | Bit0 Num | Bit1 Num deriving (Prelude.Read, Prelude.Show);
+
 data Tree a = Leaf | Node (Tree a) a (Tree a)
   deriving (Prelude.Read, Prelude.Show);
 
@@ -34,69 +41,13 @@ paint c Leaf = Leaf;
 paint c (Node l (a, uu) r) = Node l (a, c) r;
 
 baliR :: forall a. Tree (a, Color) -> a -> Tree (a, Color) -> Tree (a, Color);
-baliR (Node t1 (u, R) t2) g (Node t3 (p, R) (Node t4 (n, R) t5)) =
-  Node (Node t1 (u, B) t2) (g, R)
-    (Node t3 (p, B) (Node t4 (n, R) t5));
-baliR (Node t1 (u, R) t2) g (Node (Node t3 (n, R) t4) (p, R) Leaf) =
-  Node (Node t1 (u, B) t2) (g, R)
-    (Node (Node t3 (n, R) t4) (p, B) Leaf);
-baliR (Node t1 (u, R) t2) g
-  (Node (Node t3 (n, R) t4) (p, R) (Node v (vc, B) vb)) =
-  Node (Node t1 (u, B) t2) (g, R)
-    (Node (Node t3 (n, R) t4) (p, B) (Node v (vc, B) vb));
-baliR Leaf g (Node (Node t2 (n, R) t3) (p, R) t4) =
-  Node (Node Leaf (g, R) t2) (n, B) (Node t3 (p, R) t4);
-baliR (Node v (vc, B) vb) g (Node (Node t2 (n, R) t3) (p, R) t4) =
-  Node (Node (Node v (vc, B) vb) (g, R) t2) (n, B)
-    (Node t3 (p, R) t4);
-baliR Leaf g (Node Leaf (p, R) (Node t3 (n, R) t4)) =
-  Node (Node Leaf (g, R) Leaf) (p, B) (Node t3 (n, R) t4);
-baliR Leaf g (Node (Node v (vc, B) vb) (p, R) (Node t3 (n, R) t4)) =
-  Node (Node Leaf (g, R) (Node v (vc, B) vb)) (p, B)
-    (Node t3 (n, R) t4);
-baliR (Node v (vc, B) vb) g (Node Leaf (p, R) (Node t3 (n, R) t4)) =
-  Node (Node (Node v (vc, B) vb) (g, R) Leaf) (p, B)
-    (Node t3 (n, R) t4);
-baliR (Node v (vc, B) vb) g
-  (Node (Node va (vf, B) ve) (p, R) (Node t3 (n, R) t4)) =
-  Node (Node (Node v (vc, B) vb) (g, R) (Node va (vf, B) ve))
-    (p, B) (Node t3 (n, R) t4);
-baliR Leaf a Leaf = Node Leaf (a, B) Leaf;
-baliR Leaf a (Node Leaf (v, B) vb) =
-  Node Leaf (a, B) (Node Leaf (v, B) vb);
-baliR Leaf a (Node Leaf va Leaf) = Node Leaf (a, B) (Node Leaf va Leaf);
-baliR Leaf a (Node Leaf va (Node v (ve, B) vd)) =
-  Node Leaf (a, B) (Node Leaf va (Node v (ve, B) vd));
-baliR Leaf a (Node (Node vc (vf, B) ve) (v, B) vb) =
-  Node Leaf (a, B) (Node (Node vc (vf, B) ve) (v, B) vb);
-baliR Leaf a (Node (Node vc (vf, B) ve) va Leaf) =
-  Node Leaf (a, B) (Node (Node vc (vf, B) ve) va Leaf);
-baliR Leaf a (Node (Node vc (vf, B) ve) va (Node v (vh, B) vg)) =
-  Node Leaf (a, B)
-    (Node (Node vc (vf, B) ve) va (Node v (vh, B) vg));
-baliR Leaf a (Node v (vc, B) vb) =
-  Node Leaf (a, B) (Node v (vc, B) vb);
-baliR (Node v (vc, B) vb) a Leaf =
-  Node (Node v (vc, B) vb) (a, B) Leaf;
-baliR (Node v (vc, B) vb) a (Node Leaf (va, B) ve) =
-  Node (Node v (vc, B) vb) (a, B) (Node Leaf (va, B) ve);
-baliR (Node v (vc, B) vb) a (Node Leaf vd Leaf) =
-  Node (Node v (vc, B) vb) (a, B) (Node Leaf vd Leaf);
-baliR (Node v (vc, B) vb) a (Node Leaf vd (Node va (vh, B) vg)) =
-  Node (Node v (vc, B) vb) (a, B)
-    (Node Leaf vd (Node va (vh, B) vg));
-baliR (Node v (vc, B) vb) a (Node (Node vf (vi, B) vh) (va, B) ve) =
-  Node (Node v (vc, B) vb) (a, B)
-    (Node (Node vf (vi, B) vh) (va, B) ve);
-baliR (Node v (vc, B) vb) a (Node (Node vf (vi, B) vh) vd Leaf) =
-  Node (Node v (vc, B) vb) (a, B)
-    (Node (Node vf (vi, B) vh) vd Leaf);
-baliR (Node v (vc, B) vb) a
-  (Node (Node vf (vi, B) vh) vd (Node va (vk, B) vj)) =
-  Node (Node v (vc, B) vb) (a, B)
-    (Node (Node vf (vi, B) vh) vd (Node va (vk, B) vj));
-baliR (Node v (vc, B) vb) a (Node va (vf, B) ve) =
-  Node (Node v (vc, B) vb) (a, B) (Node va (vf, B) ve);
+baliR t1 a (Node t2 (b, R) (Node t3 (c, R) t4)) =
+  Node (Node t1 (a, B) t2) (b, R) (Node t3 (c, B) t4);
+baliR t1 a (Node (Node t2 (b, R) t3) (c, R) Leaf) =
+  Node (Node t1 (a, B) t2) (b, R) (Node t3 (c, B) Leaf);
+baliR t1 a (Node (Node t2 (b, R) t3) (c, R) (Node v (vc, B) vb)) =
+  Node (Node t1 (a, B) t2) (b, R)
+    (Node t3 (c, B) (Node v (vc, B) vb));
 baliR t1 a Leaf = Node t1 (a, B) Leaf;
 baliR t1 a (Node v (vc, B) vb) = Node t1 (a, B) (Node v (vc, B) vb);
 baliR t1 a (Node Leaf va Leaf) = Node t1 (a, B) (Node Leaf va Leaf);
@@ -156,45 +107,13 @@ join (Node t1 (a, R) t2) (Node v (vc, B) vb) =
   Node t1 (a, R) (join t2 (Node v (vc, B) vb));
 
 baliL :: forall a. Tree (a, Color) -> a -> Tree (a, Color) -> Tree (a, Color);
-baliL (Node (Node t1 (n, R) t2) (p, R) t3) g (Node t4 (u, R) t5) =
-  Node (Node (Node t1 (n, R) t2) (p, B) t3) (g, R)
-    (Node t4 (u, B) t5);
-baliL (Node Leaf (p, R) (Node t2 (n, R) t3)) g (Node t4 (u, R) t5) =
-  Node (Node Leaf (p, B) (Node t2 (n, R) t3)) (g, R)
-    (Node t4 (u, B) t5);
-baliL (Node (Node v (vc, B) vb) (p, R) (Node t2 (n, R) t3)) g
-  (Node t4 (u, R) t5) =
-  Node (Node (Node v (vc, B) vb) (p, B) (Node t2 (n, R) t3)) (g, R)
-    (Node t4 (u, B) t5);
-baliL (Node Leaf (p, R) (Node t2 (n, R) t3)) g Leaf =
-  Node (Node Leaf (p, R) t2) (n, B) (Node t3 (g, R) Leaf);
-baliL (Node Leaf (p, R) (Node t2 (n, R) t3)) g (Node v (vc, B) vb) =
-  Node (Node Leaf (p, R) t2) (n, B)
-    (Node t3 (g, R) (Node v (vc, B) vb));
-baliL (Node (Node v (vc, B) vb) (p, R) (Node t2 (n, R) t3)) g Leaf =
-  Node (Node (Node v (vc, B) vb) (p, R) t2) (n, B)
-    (Node t3 (g, R) Leaf);
-baliL (Node (Node v (vc, B) vb) (p, R) (Node t2 (n, R) t3)) g
-  (Node va (vf, B) ve) =
-  Node (Node (Node v (vc, B) vb) (p, R) t2) (n, B)
-    (Node t3 (g, R) (Node va (vf, B) ve));
-baliL (Node t1 (p, R) (Node t2 (n, R) t3)) g Leaf =
-  Node (Node t1 (p, R) t2) (n, B) (Node t3 (g, R) Leaf);
-baliL (Node t1 (p, R) (Node t2 (n, R) t3)) g (Node v (vc, B) vb) =
-  Node (Node t1 (p, R) t2) (n, B)
-    (Node t3 (g, R) (Node v (vc, B) vb));
-baliL (Node (Node t1 (n, R) t2) (p, R) Leaf) g Leaf =
-  Node (Node t1 (n, R) t2) (p, B) (Node Leaf (g, R) Leaf);
-baliL (Node (Node t1 (n, R) t2) (p, R) (Node v (vc, B) vb)) g Leaf =
-  Node (Node t1 (n, R) t2) (p, B)
-    (Node (Node v (vc, B) vb) (g, R) Leaf);
-baliL (Node (Node t1 (n, R) t2) (p, R) Leaf) g (Node v (vc, B) vb) =
-  Node (Node t1 (n, R) t2) (p, B)
-    (Node Leaf (g, R) (Node v (vc, B) vb));
-baliL (Node (Node t1 (n, R) t2) (p, R) (Node va (vf, B) ve)) g
-  (Node v (vc, B) vb) =
-  Node (Node t1 (n, R) t2) (p, B)
-    (Node (Node va (vf, B) ve) (g, R) (Node v (vc, B) vb));
+baliL (Node (Node t1 (a, R) t2) (b, R) t3) c t4 =
+  Node (Node t1 (a, B) t2) (b, R) (Node t3 (c, B) t4);
+baliL (Node Leaf (a, R) (Node t2 (b, R) t3)) c t4 =
+  Node (Node Leaf (a, B) t2) (b, R) (Node t3 (c, B) t4);
+baliL (Node (Node v (vc, B) vb) (a, R) (Node t2 (b, R) t3)) c t4 =
+  Node (Node (Node v (vc, B) vb) (a, B) t2) (b, R)
+    (Node t3 (c, B) t4);
 baliL Leaf a t2 = Node Leaf (a, B) t2;
 baliL (Node Leaf (v, B) vb) a t2 =
   Node (Node Leaf (v, B) vb) (a, B) t2;
@@ -231,14 +150,6 @@ baldR (Node va (vf, R) Leaf) a (Node v (vc, B) vb) =
 baldR (Node va (vf, R) (Node vd (vi, R) vh)) a (Node v (vc, B) vb) =
   Node (Node va (vf, R) (Node vd (vi, R) vh)) (a, R)
     (Node v (vc, B) vb);
-
-isin :: forall a b. (Eq a, Prelude.Ord a) => Tree (a, b) -> a -> Bool;
-isin Leaf x = False;
-isin (Node l (a, uu) r) x = (case cmp x a of {
-                              LT -> isin l x;
-                              EQ -> True;
-                              GT -> isin r x;
-                            });
 
 equal_tree :: forall a. (Eq a) => Tree a -> Tree a -> Bool;
 equal_tree Leaf (Node x21 x22 x23) = False;
@@ -277,8 +188,44 @@ ins x (Node l (a, R) r) = (case cmp x a of {
                               GT -> Node l (a, R) (ins x r);
                             });
 
+invc :: forall a. Tree (a, Color) -> Bool;
+invc Leaf = True;
+invc (Node l (a, c) r) =
+  (if equal_color c R
+    then equal_color (color l) B && equal_color (color r) B
+    else True) &&
+    invc l && invc r;
+
+integer_of_nat :: Nat -> Integer;
+integer_of_nat (Nat x) = x;
+
+equal_nat :: Nat -> Nat -> Bool;
+equal_nat m n = integer_of_nat m == integer_of_nat n;
+
+zero_nat :: Nat;
+zero_nat = Nat (0 :: Integer);
+
+plus_nat :: Nat -> Nat -> Nat;
+plus_nat m n = Nat (integer_of_nat m + integer_of_nat n);
+
+one_nat :: Nat;
+one_nat = Nat (1 :: Integer);
+
+bheight :: forall a. Tree (a, Color) -> Nat;
+bheight Leaf = zero_nat;
+bheight (Node l (x, c) r) =
+  (if equal_color c B then plus_nat (bheight l) one_nat else bheight l);
+
+invh :: forall a. Tree (a, Color) -> Bool;
+invh Leaf = True;
+invh (Node l (x, c) r) = equal_nat (bheight l) (bheight r) && invh l && invh r;
+
 empty :: forall a. Tree (a, Color);
 empty = Leaf;
+
+inorder :: forall a b. Tree (a, b) -> [a];
+inorder Leaf = [];
+inorder (Node l (a, uu) r) = inorder l ++ a : inorder r;
 
 delete ::
   forall a. (Eq a, Prelude.Ord a) => a -> Tree (a, Color) -> Tree (a, Color);
@@ -287,5 +234,11 @@ delete x t = paint B (del x t);
 insert ::
   forall a. (Eq a, Prelude.Ord a) => a -> Tree (a, Color) -> Tree (a, Color);
 insert x t = paint B (ins x t);
+
+rootBlack :: forall a. Tree (a, Color) -> Bool;
+rootBlack t = equal_color (color t) B;
+
+rbt :: forall a. Tree (a, Color) -> Bool;
+rbt t = invc t && invh t && rootBlack t;
 
 }

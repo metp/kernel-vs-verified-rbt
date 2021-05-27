@@ -1,8 +1,8 @@
 theory RBT_export  
 imports
-  RBT
-  RBT_Set
-  "HOL-Data_Structures.Isin2"
+  "HOL-Data_Structures.RBT_Set"
+  "HOL-Data_Structures.Tree2"
+  "HOL-Library.Code_Target_Numeral"
   HOL.Orderings
 begin
 
@@ -18,13 +18,22 @@ However that's fine because all ordered types in the RBT interface are linear or
 | type_class order \<rightharpoonup> (Haskell) "Prelude.Ord"
 | type_class preorder \<rightharpoonup> (Haskell) "Prelude.Ord"
 
-(*| class_instance integer :: linorder \<rightharpoonup> (Haskell) -*)
+definition rootBlack :: "'a rbt \<Rightarrow> bool" where "rootBlack t \<equiv> color t = Black"
+
+definition rbt :: "'a rbt \<Rightarrow> bool "where "rbt t \<equiv> invc t \<and> invh t \<and> rootBlack t" 
+
+lemma "RBT_Set.rbt t \<equiv> rbt t"
+  by (simp add: RBT_Set.rbt_def rbt_def rootBlack_def)
 
 export_code
+  rbt
+  RBT_Set.invc
+  RBT_Set.invh
+  rootBlack
   RBT_Set.empty
   RBT_Set.insert
   RBT_Set.delete
-  Isin2.isin
+  Tree2.inorder
 in Haskell module_name RBT.Verified (string_classes)
 
 end

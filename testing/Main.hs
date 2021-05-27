@@ -3,16 +3,18 @@
 
 module Main where
 
-import RBT.Verified (Tree, Color)
-import qualified RBT.Verified as RBT (empty)
-import qualified RBT.Verified as Verified (insert, delete)
-import qualified RBT.Kernel as Kernel (insert, delete, reset)
-import Control.Monad (when, unless, foldM_)
-import System.Environment (getArgs)
-import System.Random
+import Control.Monad
 import Data.List
 import Data.Maybe
 import Options.Applicative
+import RBT.Verified (Tree, Color, rbt, inorder, invc, invh, rootBlack)
+import System.Random
+import System.Random.Shuffle
+import qualified RBT.Kernel as Kernel
+import qualified RBT.Verified as RBT (empty)
+import qualified RBT.Verified as Verified (insert, delete)
+
+type IRBT = Tree (Int, Color)
 
 data Options = Options
   { runs :: Int
@@ -37,26 +39,35 @@ options = info (opts <**> helper) desc where
 main :: IO ()
 main = do
   opts <- execParser options
-  Kernel.reset
   let gen = mkStdGen $ seed opts
   let range = tokenRange $ runs opts
-  let numbers = take (runs opts) $ nub $ unfoldr (Just . uniformR range) gen
-  foldM_ (test $ verbose opts)  RBT.empty numbers
+  let ns = take (runs opts) $ nub $ unfoldr (Just . uniformR range) gen
+  let ns' = shuffle' ns (runs opts) gen
+  let v = verbose opts
+  (hdls,kTreeInit) <- Kernel.init
+  insTrees <- foldM (exec v "inserting" Verified.insert (Kernel.insert hdls)) (RBT.empty, kTreeInit) ns
+  foldM_ (exec v "deleting" Verified.delete (Kernel.delete hdls)) insTrees ns'
+  Kernel.cleanup hdls
 
-test :: Bool -> Tree (Int, Color) -> Int -> IO (Tree (Int, Color))
-test verbose tree k = do
-  let verifiedTree = Verified.insert k tree
-  kernelTree <- Kernel.insert k
-  when (verbose || show verifiedTree /= show kernelTree) $ do
-    putStrLn $ "Trees after inserting " ++ show k
-    putStrLn $ "Verified: " ++ show verifiedTree
-    putStrLn $ "Kernel:   " ++ show kernelTree
-    putStrLn $ "Diff:     " ++ diff (show verifiedTree) (show kernelTree)
+exec :: Bool -> String -> (Int -> IRBT -> IRBT) -> (Int -> IO IRBT) -> (IRBT,IRBT) -> Int -> IO (IRBT,IRBT)
+exec verbose op opVerified opKernel (vTreePrev,kTreePrev) k = do
+  let vTree = opVerified k vTreePrev
+  kTree <- opKernel k
+  when verbose $ print kTree
+  unless (rbt kTree && inorder kTree == inorder vTree) $ do
+    let invs = [
+          ("color"     ,  invc kTree),
+          ("height"    ,  invh kTree),
+          ("root_black",  rootBlack kTree),
+          ("inorder"   ,  inorder vTree == inorder kTree)
+          ]
+    putStr $ "After " ++ op ++ " " ++ show k ++ " following invariants failed: "
+    putStrLn $ unwords $ map fst $ filter (not . snd) invs
+    putStrLn $ "Previously: " ++ show kTreePrev
+    putStrLn $ "Now:        " ++ show kTree
+    putStrLn $ "Verified:   " ++ show vTree
     putStrLn ""
-  return verifiedTree
-
-diff :: String -> String -> String
-diff as bs = [if a == b then '.' else 'X' | (a,b) <- zip as bs] ++ replicate (abs $ length as - length bs) '.'
+  return (vTree,kTree)
 
 tokenRange :: Int -> (Int,Int)
 tokenRange n | n < 10 = (0,9)
