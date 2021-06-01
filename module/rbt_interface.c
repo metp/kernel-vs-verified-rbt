@@ -7,9 +7,7 @@
 #include <linux/slab.h>
 #include <linux/types.h>
 
-#define CMD_INSERT 0
-#define CMD_DELETE 1
-#define CMD_RESET  2
+enum Cmd { RESET, INSERT, REPLACE, DELETE };
 
 static struct dentry *rbt_if_root;
 static struct rb_root rbt = RB_ROOT;
@@ -102,22 +100,22 @@ ssize_t cmd_exec(struct file *file, const char __user *ubuf, size_t len, loff_t 
 	//pr_info("cmd: %d key: %llu value: %llu\n", cmd, input_key, input_value);
 
 	switch (cmd) {
-	case CMD_INSERT:
+	case RESET:
+		rbtree_postorder_for_each_entry_safe(data, _n, &rbt, node)
+			kfree(data);
+		rbt = RB_ROOT;
+		break;
+	case INSERT:
 		data = kzalloc(sizeof(*data), GFP_KERNEL);
 		data->key = input_key;
 		rb_add(&data->node, &rbt, data_less);
 		break;
-	case CMD_DELETE:
+	case DELETE:
 		node = rb_find(&input_key, &rbt, data_cmp);
 		if (!node)
 			return -EINVAL;
 		rb_erase(node, &rbt);
 		kfree(data_from_node(node));
-		break;
-	case CMD_RESET:
-		rbtree_postorder_for_each_entry_safe(data, _n, &rbt, node)
-			kfree(data);
-		rbt = RB_ROOT;
 		break;
 	default:
 		return -EINVAL;
