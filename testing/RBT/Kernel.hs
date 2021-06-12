@@ -1,44 +1,55 @@
-module RBT.Kernel(RBT.Kernel.init, cleanup, insert, delete) where
+module RBT.Kernel(Cmd(..), IRBT, RBT.Kernel.Handle, RBT.Kernel.init, cleanup, insert, delete) where
 
+import GHC.IO.Handle
 import RBT.Verified (Tree, Color)
 import System.IO
-import GHC.IO.Handle
+import qualified RBT.Verified as RBT (isEmpty)
+
+type IRBT = Tree (Int, Color)
 
 keyFile = "/sys/kernel/debug/rbt_if/key"
 cmdFile = "/sys/kernel/debug/rbt_if/cmd"
 
-data Cmd = Reset | Insert | Replace | Delete deriving (Enum)
+data Cmd = Reset | Insert | Delete deriving (Enum, Bounded)
+
+printCmd hdl = hPrint hdl . fromEnum
 
 instance Show Cmd where
-  show = show . fromEnum
+  show Reset = "reseting"
+  show Insert = "inserting"
+  show Delete = "deleting"
 
-data KernelHandle = KernelHandle { keyHdl :: Handle, cmdHdl :: Handle }
+data Handle = Handle {
+  keyHdl :: GHC.IO.Handle.Handle,
+  cmdHdl :: GHC.IO.Handle.Handle }
 
-init :: IO (KernelHandle, Tree (Int, Color))
+init :: IO RBT.Kernel.Handle
 init = do
   keyHdl <- openFile keyFile WriteMode
   cmdHdl <- openFile cmdFile ReadWriteMode
   hSetBuffering keyHdl LineBuffering
   hSetBuffering cmdHdl LineBuffering
-  hPrint cmdHdl Reset
-  leaf <- read <$> hGetLine cmdHdl
-  return (KernelHandle keyHdl cmdHdl, leaf)
+  printCmd cmdHdl Reset
+  kTreeInit <- read <$> hGetLine cmdHdl :: IO IRBT
+  if RBT.isEmpty kTreeInit
+    then pure (Handle keyHdl cmdHdl)
+    else errorWithoutStackTrace "Kernel interface initialization failed"
 
-cleanup :: KernelHandle -> IO ()
+cleanup :: RBT.Kernel.Handle -> IO ()
 cleanup hdls = do
   hClose $ keyHdl hdls
   hClose $ cmdHdl hdls
 
-insert :: KernelHandle -> Int -> IO (Tree (Int,Color))
-insert (KernelHandle keyHdl cmdHdl) k = do
+insert :: RBT.Kernel.Handle -> Int -> IO IRBT
+insert (Handle keyHdl cmdHdl) k = do
   hPrint keyHdl k
-  hPrint cmdHdl Insert
+  printCmd cmdHdl Insert
   hSeek cmdHdl AbsoluteSeek 0
   read <$> hGetLine cmdHdl
 
-delete :: KernelHandle -> Int -> IO (Tree (Int,Color))
-delete (KernelHandle keyHdl cmdHdl) k = do
+delete :: RBT.Kernel.Handle -> Int -> IO IRBT
+delete (Handle keyHdl cmdHdl) k = do
   hPrint keyHdl k
-  hPrint cmdHdl Delete
+  printCmd cmdHdl Delete
   hSeek cmdHdl AbsoluteSeek 0
   read <$> hGetLine cmdHdl

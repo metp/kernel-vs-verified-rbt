@@ -7,8 +7,9 @@ maintainer:          mete.polat@cs.tum.edu
 
 executable rbtTestHarness
   main-is:             Main.hs
-  other-modules:       RBT.Kernel RBT.Verified
+  other-modules:       Strategy RBT.Kernel RBT.Verified
   -- other-extensions:
   build-depends:       base ^>=4.14.1.0, random, random-shuffle, optparse-applicative
   -- hs-source-dirs:
   default-language:    Haskell2010
+  default-extensions:  RecordWildCards ApplicativeDo TupleSections

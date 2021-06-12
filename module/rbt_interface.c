@@ -7,7 +7,7 @@
 #include <linux/slab.h>
 #include <linux/types.h>
 
-enum Cmd { RESET, INSERT, REPLACE, DELETE };
+enum Cmd { RESET, INSERT, DELETE };
 
 static struct dentry *rbt_if_root;
 static struct rb_root rbt = RB_ROOT;
@@ -51,7 +51,7 @@ static int cmd_show(struct seq_file *m, void *p)
 			if (left) {
 				seq_printf(m, " (%llu,%s) ",
 						data_from_node(parent)->key,
-						rb_is_red(parent) ? "R" : "B");
+						rb_is_red(parent) ? "Red" : "Black");
 				node = parent->rb_right;
 				left = false;
 			} else {
@@ -67,7 +67,7 @@ static int cmd_show(struct seq_file *m, void *p)
 
 				seq_printf(m, " (%llu,%s) ",
 						data_from_node(parent)->key,
-						rb_is_red(parent) ? "R" : "B");
+						rb_is_red(parent) ? "Red" : "Black");
 
 				node = parent->rb_right;
 				left = false;
@@ -97,8 +97,6 @@ ssize_t cmd_exec(struct file *file, const char __user *ubuf, size_t len, loff_t 
 	if (ret)
 		return ret;
 
-	//pr_info("cmd: %d key: %llu value: %llu\n", cmd, input_key, input_value);
-
 	switch (cmd) {
 	case RESET:
 		rbtree_postorder_for_each_entry_safe(data, _n, &rbt, node)
@@ -113,7 +111,7 @@ ssize_t cmd_exec(struct file *file, const char __user *ubuf, size_t len, loff_t 
 	case DELETE:
 		node = rb_find(&input_key, &rbt, data_cmp);
 		if (!node)
-			return -EINVAL;
+			break;
 		rb_erase(node, &rbt);
 		kfree(data_from_node(node));
 		break;
