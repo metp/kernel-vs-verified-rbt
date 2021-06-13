@@ -1,4 +1,4 @@
-module RBT.Kernel(Cmd(..), IRBT, RBT.Kernel.Handle, RBT.Kernel.init, cleanup, insert, delete) where
+module RBT.Kernel(Cmd(..), IRBT, RBT.Kernel.Handle, RBT.Kernel.init, cleanup, reset, insert, delete) where
 
 import GHC.IO.Handle
 import RBT.Verified (Tree, Color)
@@ -27,29 +27,34 @@ init :: IO RBT.Kernel.Handle
 init = do
   keyHdl <- openFile keyFile WriteMode
   cmdHdl <- openFile cmdFile ReadWriteMode
+  let hdl = Handle{..}
   hSetBuffering keyHdl LineBuffering
   hSetBuffering cmdHdl LineBuffering
-  printCmd cmdHdl Reset
-  kTreeInit <- read <$> hGetLine cmdHdl :: IO IRBT
-  if RBT.isEmpty kTreeInit
-    then pure (Handle keyHdl cmdHdl)
-    else errorWithoutStackTrace "Kernel interface initialization failed"
+  reset hdl
+  return hdl
 
 cleanup :: RBT.Kernel.Handle -> IO ()
-cleanup hdls = do
-  hClose $ keyHdl hdls
-  hClose $ cmdHdl hdls
+cleanup hdl = do
+  reset hdl
+  hClose $ keyHdl hdl
+  hClose $ cmdHdl hdl
+
+exec :: Cmd -> Maybe Int -> RBT.Kernel.Handle -> IO IRBT
+exec cmd x Handle{..} = do
+  maybe (pure ()) (hPrint keyHdl) x
+  printCmd cmdHdl cmd
+  hSeek cmdHdl AbsoluteSeek 0
+  read <$> hGetLine cmdHdl
+
+reset :: RBT.Kernel.Handle -> IO IRBT
+reset hdl = do 
+  tree <- exec Reset Nothing hdl
+  if RBT.isEmpty tree
+    then pure tree
+    else errorWithoutStackTrace "Kernel RB-Tree initialization failed"
 
 insert :: RBT.Kernel.Handle -> Int -> IO IRBT
-insert (Handle keyHdl cmdHdl) k = do
-  hPrint keyHdl k
-  printCmd cmdHdl Insert
-  hSeek cmdHdl AbsoluteSeek 0
-  read <$> hGetLine cmdHdl
+insert hdl x = exec Insert (Just x) hdl
 
 delete :: RBT.Kernel.Handle -> Int -> IO IRBT
-delete (Handle keyHdl cmdHdl) k = do
-  hPrint keyHdl k
-  printCmd cmdHdl Delete
-  hSeek cmdHdl AbsoluteSeek 0
-  read <$> hGetLine cmdHdl
+delete hdl x = exec Delete (Just x) hdl

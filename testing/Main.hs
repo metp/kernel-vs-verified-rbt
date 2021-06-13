@@ -17,6 +17,7 @@ import qualified RBT.Verified as Verified (insert, delete)
 data Options = Options
   { runs :: Int
   , seed :: Int
+  , randomTest :: Bool
   , verbose :: Bool }
 
 naturalParser :: ReadM Int
@@ -29,19 +30,22 @@ options = info (opts <**> helper) desc where
   desc = fullDesc <> header "Userspace testing harness for the Linux red-black tree implementation"
   opts = do
     verbose    <- switch $ short 'v' <> help "verbose"
+    randomTest <- switch $ short 'r' <> help "Use the random test strategy instead of exhaustive testing one"
     runs       <- option naturalParser $ short 'n' <> metavar "<runs>" <> help "Number of runs"
     seed       <- option auto $ short 's' <> metavar "<seed>" <> showDefault <> value 42
                   <> help "Seed for the pseudo-random-number generator"
     pure Options {..}
 
+restartHeader = "------Restart------\n"
+
 main :: IO ()
 main = do
   Options{..} <- execParser options
-  rs <- Strategy.random runs seed
+  rss <- (if randomTest then Strategy.random else Strategy.exhaustive) runs seed
   if verbose
-  then mapM_ (printState []) rs
+  then mapM_ (\rs -> putStrLn restartHeader >> mapM_ (printState []) rs) rss
   else do
-    let status = mapM checkResult rs
+    let status = mapM checkResult $ concat rss
     either (uncurry printState) (pure () `const`) status
 
 checkResult :: Result -> Either ([String], Result) ()

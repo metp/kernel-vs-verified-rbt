@@ -1,10 +1,11 @@
-module Strategy (Cmd, Result(..), random, randoms) where
+module Strategy (Cmd, Result(..), random, exhaustive) where
 
 import Control.Monad
 import Data.Bifunctor
 import Data.List
 import RBT.Kernel (IRBT, Cmd(..))
 import RBT.Verified (Tree, Color)
+import System.Random.Shuffle (shuffle')
 import System.Random (uniform, mkStdGen)
 import System.Random.Stateful (Uniform, uniformM, uniformRM)
 import qualified RBT.Kernel as Kernel
@@ -28,30 +29,43 @@ cmdMap :: Cmd -> (Int -> IRBT -> IRBT, Kernel.Handle -> Int -> IO IRBT)
 cmdMap Insert = (Verified.insert, Kernel.insert)
 cmdMap Delete = (Verified.delete, Kernel.delete)
 
-vCmd = fst . cmdMap
-kCmd = snd . cmdMap
+vCmd :: IRBT -> (Cmd,Int) -> IRBT
+vCmd t (c,x) = (fst $ cmdMap c) x t
 
-randoms :: Uniform a => Int -> [a]
-randoms = unfoldr (Just . uniform) . mkStdGen
+kCmd :: Kernel.Handle -> (Cmd,Int) -> IO IRBT
+kCmd hdl (c,x) = (snd $ cmdMap c) hdl x
 
-random :: Int -> Int -> IO [Result]
+buildInput :: [Int] -> [Int] -> [Cmd] -> [(Cmd, Int)]
+buildInput _ _ [] = []
+buildInput (i:is) ds (Insert : cs) = (Insert, i) : buildInput is ds cs
+buildInput is (d:ds) (Delete : cs) = (Delete, d) : buildInput is ds cs
+
+type TestStrategy = Int -> Int -> IO [[Result]]
+
+random :: TestStrategy
 random runs seed = do
+  let rndCmds = randoms seed :: [Cmd]
+  let rndXs = nub $ map abs $ randoms seed :: [Int]
+  let inputs = take runs (buildInput rndXs rndXs rndCmds)
+  let vs = tail $ scanl vCmd RBT.empty inputs
   hdl <- Kernel.init
-  ksNow <- ks hdl
-  let ksPrev = RBT.empty : ksNow
-  let (cs,xs) = unzip is
-  let rs = zipWith5 Result cs xs vs ksNow ksPrev
+  ks <- mapM (kCmd hdl) inputs
   Kernel.cleanup hdl
-  return rs
+  let (cs,xs) = unzip inputs
+  return $ zipWith5 Result cs xs vs ks (RBT.empty : ks) : []
   where
-    is = take runs $ randomInput seed
-    vs = tail $ scanl (\t (c,x) -> vCmd c x t) RBT.empty is
-    ks hdl = mapM (\(c,x) -> kCmd c hdl x) is
+    randoms :: Uniform a => Int -> [a]
+    randoms = unfoldr (Just . uniform) . mkStdGen
 
-randomInput :: Int -> [(Cmd, Int)]
-randomInput seed = randomInput' cs xs xs where
-  randomInput' [] _ _ = []
-  randomInput' (Insert : cs) (i:is) ds = (Insert, i) : randomInput' cs is ds
-  randomInput' (Delete : cs) is (d:ds) = (Delete, d) : randomInput' cs is ds
-  cs = randoms seed :: [Cmd]
-  xs = nub $ map abs $ randoms seed :: [Int]
+exhaustive :: TestStrategy
+exhaustive n seed = do
+  let allDistributions = [replicate i Insert ++ replicate (n-i) Delete | i <- [0..n]]
+  let shuffle1ToN = shuffle' [1..n] n . mkStdGen
+  let insShuffled = shuffle1ToN seed
+  let delShuffled = shuffle1ToN (succ seed)
+  let inputLists = concatMap (permutations . buildInput insShuffled delShuffled) allDistributions :: [[(Cmd,Int)]]
+  let verifiedTrees = map (tail . scanl vCmd RBT.empty) inputLists :: [[IRBT]]
+  hdl <- Kernel.init
+  kernelTrees <- mapM (\is -> Kernel.reset hdl >> mapM (kCmd hdl) is) inputLists :: IO [[IRBT]]
+  Kernel.cleanup hdl
+  return $ zipWith3 (\is vs ks -> let (cs, xs) = unzip is in zipWith5 Result cs xs vs ks (RBT.empty : ks)) inputLists verifiedTrees kernelTrees
