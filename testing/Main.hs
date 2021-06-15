@@ -41,26 +41,28 @@ restartHeader = "------Restart------\n"
 main :: IO ()
 main = do
   Options{..} <- execParser options
-  rss <- (if randomTest then Strategy.random else Strategy.exhaustive) runs seed
-  if verbose
-  then mapM_ (\rs -> putStrLn restartHeader >> mapM_ (printState []) rs) rss
-  else do
-    let status = mapM checkResult $ concat rss
-    either (uncurry printState) (pure () `const`) status
+  hdl <- Kernel.init
+  let rss = (if randomTest
+      then Strategy.random
+      else Strategy.exhaustive) hdl runs seed
+  forM_ rss $ \rs -> do
+    when (length rss > 1) $ do
+      Kernel.reset hdl
+      when verbose $ putStrLn restartHeader
+    checkResults verbose RBT.empty rs
+  Kernel.cleanup hdl
 
-checkResult :: Result -> Either ([String], Result) ()
-checkResult r@Result{..}
+compareTrees :: IRBT -> IRBT -> Either [String] ()
+compareTrees vTree kTree
   | rbt kTree && inorder kTree == inorder vTree = Right ()
-  | otherwise = do
-      let failed = map fst $ filter (not . snd) invs
-      Left (failed, r)
-      where invs = ("color"     ,  invc kTree) :
-                   ("height"    ,  invh kTree) :
-                   ("root_black",  rootBlack kTree) :
-                   ("inorder"   ,  inorder vTree == inorder kTree) : []
+  | otherwise = Left $ map fst $ filter (not . snd) [
+      ("color"     ,  invc kTree) ,
+      ("height"    ,  invh kTree) ,
+      ("root_black",  rootBlack kTree) ,
+      ("inorder"   ,  inorder vTree == inorder kTree) ]
 
-printState :: [String] -> Result -> IO ()
-printState invs Result{..} = do
+printTrees :: Cmd -> Int -> IRBT -> IRBT -> IRBT -> [String] -> IO ()
+printTrees cmd key vTree kTree kTreePrev invs = do
   putStrLn $ unwords $ if null invs
   then [show cmd, show key]
   else ["After", show cmd, show key, "following invariants failed:"] ++ invs
@@ -68,3 +70,14 @@ printState invs Result{..} = do
   putStrLn $ "Kernel tree after:   " ++ show kTree
   putStrLn $ "Verified tree after: " ++ show vTree
   putStrLn ""
+
+checkResults :: Bool -> IRBT -> [Result] -> IO ()
+checkResults _ _ [] = return ()
+checkResults verbose kTreePrev (Result{..}:rs) = do
+  kTree' <- kTree
+  case compareTrees vTree kTree' of
+    Left invs ->
+      printTrees cmd key vTree kTree' kTreePrev invs
+    Right _ -> do 
+      when verbose $ printTrees cmd key vTree kTree' kTreePrev []
+      checkResults verbose kTree' rs
