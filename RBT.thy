@@ -13,16 +13,6 @@ type_synonym 'a rbt = "('a*color)tree"
 abbreviation R where "R l a r \<equiv> Node l (a, Red) r"
 abbreviation B where "B l a r \<equiv> Node l (a, Black) r"
 
-(*
-
-"baliL (R t1 p (R t2 n t3)) g (B t4 u t5) = B (R t1 p t2) n (R t3 g (B t4 u t5))" |
-"baliL (R t1 p (R t2 n t3)) g Leaf = B (R t1 p t2) n (R t3 g Leaf)" |
-
-"baliR (B t1 u t2) g (R (R t3 n t4) p t5) = B (R (B t1 u t2) g t3) n (R t4 p t5)" |
-"baliR Leaf g (R (R t3 n t4) p t5) = B (R Leaf g t3) n (R t4 p t5)" |
-
-*)
-
 fun baliL :: "'a rbt \<Rightarrow> 'a \<Rightarrow> 'a rbt \<Rightarrow> 'a rbt" where
 "baliL (R (R t1 n t2) p t3) g (R t4 u t5) = R (B (R t1 n t2) p t3) g (B t4 u t5)" |
 "baliL (R t1 p (R t2 n t3)) g (R t4 u t5) = R (B t1 p (R t2 n t3)) g (B t4 u t5)" |
