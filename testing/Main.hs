@@ -46,9 +46,8 @@ main = do
       then Strategy.random
       else Strategy.exhaustive) hdl runs seed
   forM_ rss $ \rs -> do
-    when (length rss > 1) $ do
-      Kernel.reset hdl
-      when verbose $ putStrLn restartHeader
+    Kernel.reset hdl
+    when verbose $ putStrLn restartHeader
     checkResults verbose RBT.empty rs
   Kernel.cleanup hdl
 
