@@ -1,11 +1,12 @@
 module RBT.Kernel(Cmd(..), IRBT, RBT.Kernel.Handle, RBT.Kernel.init, cleanup, reset, insert, delete) where
 
+import Data.Word (Word64)
 import GHC.IO.Handle
 import RBT.Verified (Tree, Color)
 import System.IO
 import qualified RBT.Verified as RBT (isEmpty)
 
-type IRBT = Tree (Int, Color)
+type IRBT = Tree (Word64, Color)
 
 keyFile = "/sys/kernel/debug/rbt_if/key"
 cmdFile = "/sys/kernel/debug/rbt_if/cmd"
@@ -39,7 +40,7 @@ cleanup hdl = do
   hClose $ keyHdl hdl
   hClose $ cmdHdl hdl
 
-exec :: Cmd -> Maybe Int -> RBT.Kernel.Handle -> IO IRBT
+exec :: Cmd -> Maybe Word64 -> RBT.Kernel.Handle -> IO IRBT
 exec cmd x Handle{..} = do
   maybe (pure ()) (hPrint keyHdl) x
   printCmd cmdHdl cmd
@@ -53,8 +54,8 @@ reset hdl = do
     then pure tree
     else errorWithoutStackTrace "Kernel RB-Tree initialization failed"
 
-insert :: RBT.Kernel.Handle -> Int -> IO IRBT
+insert :: RBT.Kernel.Handle -> Word64 -> IO IRBT
 insert hdl x = exec Insert (Just x) hdl
 
-delete :: RBT.Kernel.Handle -> Int -> IO IRBT
+delete :: RBT.Kernel.Handle -> Word64 -> IO IRBT
 delete hdl x = exec Delete (Just x) hdl

@@ -4,6 +4,7 @@ import Control.Monad
 import Data.Bifunctor
 import Data.List
 import Data.Maybe
+import Data.Word (Word64)
 import Options.Applicative
 import RBT.Kernel (IRBT)
 import RBT.Verified
@@ -15,12 +16,12 @@ import qualified RBT.Verified as RBT (empty)
 import qualified RBT.Verified as Verified (insert, delete)
 
 data Options = Options
-  { runs :: Int
+  { runs :: Word64
   , seed :: Int
   , randomTest :: Bool
   , verbose :: Bool }
 
-naturalParser :: ReadM Int
+naturalParser :: (Integral i, Read i) => ReadM i
 naturalParser = eitherReader $ \s -> if read s >= 0
   then Right $ read s
   else Left "Not a positive value"
@@ -60,7 +61,7 @@ compareTrees vTree kTree
       ("root_black",  rootBlack kTree) ,
       ("inorder"   ,  inorder vTree == inorder kTree) ]
 
-printTrees :: Cmd -> Int -> IRBT -> IRBT -> IRBT -> [String] -> IO ()
+printTrees :: Cmd -> Word64 -> IRBT -> IRBT -> IRBT -> [String] -> IO ()
 printTrees cmd key vTree kTree kTreePrev invs = do
   putStrLn $ unwords $ if null invs
   then [show cmd, show key]
