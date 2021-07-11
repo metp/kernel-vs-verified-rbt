@@ -61,12 +61,9 @@ random hdl runs seed = do
     randoms = unfoldr (Just . uniform) . mkStdGen
 
 exhaustive :: TestStrategy
-exhaustive hdl n seed = do
-  let allDistributions = [genericReplicate i Insert ++ genericReplicate (n-i) Delete | i <- [0..n]]
-  let shuffle1ToN = shuffle' [1..n] (fromIntegral n) . mkStdGen
-  let insShuffled = shuffle1ToN seed
-  let delShuffled = shuffle1ToN (succ seed)
-  let inputLists = concatMap (permutations . buildInput insShuffled delShuffled) allDistributions :: [Run Input]
+exhaustive hdl n _ = do
+  let distributions = [genericReplicate i Insert ++ genericReplicate (n-i) Delete | i <- [n,n-1..]]
+  let inputLists = concatMap (permutations . buildInput [1..n] [1..n]) distributions :: [Run Input]
   let verifiedTrees = map (tail . scanl vCmd RBT.empty) inputLists :: [Run IRBT]
   let kernelTrees = map (map (kCmd hdl)) inputLists :: [Run (IO IRBT)]
   zipWith3 (\is vs ks -> let (cs, xs) = unzip is in zipWith4 Result cs xs vs ks) inputLists verifiedTrees kernelTrees
