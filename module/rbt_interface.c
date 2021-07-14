@@ -1,6 +1,7 @@
 #define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
 
 #include <linux/debugfs.h>
+#include <linux/init.h>
 #include <linux/module.h>
 #include <linux/rbtree_augmented.h>
 #include <linux/seq_file.h>
@@ -135,7 +136,7 @@ static const struct file_operations cmd_fops = {
 	.release	= single_release,
 };
 
-int init_module(void)
+int __init rbt_if_init(void)
 {
 	rbt_if_root = debugfs_create_dir("rbt_if", NULL);
 	if (IS_ERR(rbt_if_root)) {
@@ -150,7 +151,7 @@ int init_module(void)
 	return 0;
 }
 
-void cleanup_module(void)
+void __exit rbt_if_exit(void)
 {
 	struct data *_n, *pos;
 	debugfs_remove_recursive(rbt_if_root);
@@ -159,5 +160,7 @@ void cleanup_module(void)
 
 }
 
+module_init(rbt_if_init);
+module_exit(rbt_if_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Mete Polat <mete.polat@cs.tum.edu>");
