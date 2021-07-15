@@ -38,54 +38,51 @@ static int data_cmp(const void *_a, const struct rb_node *_b)
 		return 0;
 }
 
+#define print(...) seq_printf(m, __VA_ARGS__)
+#define print_parent print(" (%llu,%s) ", \
+		data_from_node(parent)->key, rb_is_red(parent) ? "Red" : "Black")
+
 static int cmd_show(struct seq_file *m, void *p)
 {
 	struct rb_node *node = rbt.rb_node, *parent = NULL;
 	bool left = false;
 	while(true) {
 		if (!node) {
-			seq_printf(m, "Leaf");
+			print("Leaf");
 
 			if (!parent)
 				break;
 
 			if (left) {
-				seq_printf(m, " (%llu,%s) ",
-						data_from_node(parent)->key,
-						rb_is_red(parent) ? "Red" : "Black");
+				print_parent;
 				node = parent->rb_right;
 				left = false;
 			} else {
-				while (rb_parent(parent) != NULL && parent->rb_right == node) {
-					seq_printf(m, ")");
+				while (rb_parent(parent) && parent->rb_right == node) {
+					print(")");
 					node = parent;
 					parent = rb_parent(node);
 				}
 
-				if (parent->rb_right == node) {
+				if (parent->rb_right == node)
 					break;
-				}
 
-				seq_printf(m, " (%llu,%s) ",
-						data_from_node(parent)->key,
-						rb_is_red(parent) ? "Red" : "Black");
-
+				print_parent;
 				node = parent->rb_right;
 				left = false;
 			}
 		} else {
 			if (parent)
-				seq_printf(m, "(Node ");
-			else
-				seq_printf(m, "Node ");
+				print("(");
 
+			print("Node ");
 			parent = node;
 			node = node->rb_left;
 			left = true;
 		}
 
 	}
-	seq_printf(m, "\n");
+	print("\n");
 	return 0;
 }
 
