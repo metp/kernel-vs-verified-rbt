@@ -1,10 +1,11 @@
+{-# LANGUAGE RecordWildCards #-}
 module RBT.Kernel(Cmd(..), IRBT, RBT.Kernel.Handle, RBT.Kernel.init, cleanup, reset, insert, delete) where
 
 import Data.Word (Word64)
 import GHC.IO.Handle
 import RBT.Verified (Tree, Color)
 import System.IO
-import qualified RBT.Verified as RBT (isEmpty)
+import qualified RBT.Verified as RBT (equal_tree, empty)
 
 type IRBT = Tree (Word64, Color)
 
@@ -50,7 +51,7 @@ exec cmd x Handle{..} = do
 reset :: RBT.Kernel.Handle -> IO IRBT
 reset hdl = do 
   tree <- exec Reset Nothing hdl
-  if RBT.isEmpty tree
+  if RBT.equal_tree RBT.empty tree
     then pure tree
     else errorWithoutStackTrace "Kernel RB-Tree initialization failed"
 

@@ -1,8 +1,8 @@
 {-# LANGUAGE EmptyDataDecls, RankNTypes, ScopedTypeVariables #-}
 
 module
-  RBT.Verified(Color, Nat, Tree, invc, invh, empty, inorder, delete, insert,
-                rootBlack, rbt, isEmpty)
+  RBT.Verified(Color, Nat, Tree, equal_tree, invc, invh, empty, inorder, delete,
+                insert, rootBlack, rbt)
   where {
 
 import Prelude ((==), (/=), (<), (<=), (>=), (>), (+), (-), (*), (/), (**),
@@ -240,8 +240,5 @@ rootBlack t = equal_color (color t) Black;
 
 rbt :: forall a. Tree (a, Color) -> Bool;
 rbt t = invc t && invh t && rootBlack t;
-
-isEmpty :: forall a. (Eq a) => Tree (a, Color) -> Bool;
-isEmpty t = equal_tree t Leaf;
 
 }
