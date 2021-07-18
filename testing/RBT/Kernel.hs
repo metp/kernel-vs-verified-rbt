@@ -17,7 +17,7 @@ data Cmd = Reset | Insert | Delete deriving (Enum, Bounded)
 printCmd hdl = hPrint hdl . fromEnum
 
 instance Show Cmd where
-  show Reset = "reseting"
+  show Reset = "resetting"
   show Insert = "inserting"
   show Delete = "deleting"
 
