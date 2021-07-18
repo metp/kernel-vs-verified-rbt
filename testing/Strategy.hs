@@ -49,8 +49,8 @@ type TestStrategy = Kernel.Handle -> Word64 -> Int -> [Run Result]
 
 random :: TestStrategy
 random hdl runs seed = do
-  let rndCmds = randoms seed :: [Cmd]
-  let rndXs = nub $ randoms seed :: [Word64]
+  let rndCmds = randoms seed
+  let rndXs = randoms seed
   let inputs = genericTake runs (buildInput rndXs rndXs rndCmds)
   let vs = tail $ scanl vCmd RBT.empty inputs
   let ks = map (kCmd hdl) inputs

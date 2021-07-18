@@ -21,23 +21,6 @@ struct data {
 
 #define data_from_node(from) (rb_entry(from, struct data, node))
 
-static bool data_less(struct rb_node *a, const struct rb_node *b)
-{
-	return data_from_node(a)->key < data_from_node(b)->key;
-}
-
-static int data_cmp(const void *_a, const struct rb_node *_b)
-{
-	u64 a = *(typeof(a) *) _a;
-	u64 b = data_from_node(_b)->key;
-	if (a < b)
-		return -1;
-	if (a > b)
-		return 1;
-	else
-		return 0;
-}
-
 #define print(...) seq_printf(m, __VA_ARGS__)
 #define print_parent print(" (%llu,%s) ", \
 		data_from_node(parent)->key, rb_is_red(parent) ? "Red" : "Black")
@@ -86,6 +69,23 @@ static int cmd_show(struct seq_file *m, void *p)
 	return 0;
 }
 
+static int key_cmp(const void *_a, const struct rb_node *_b)
+{
+	u64 a = *(typeof(a) *) _a;
+	u64 b = data_from_node(_b)->key;
+	if (a < b)
+		return -1;
+	if (a > b)
+		return 1;
+	else
+		return 0;
+}
+
+static int node_cmp(struct rb_node *a, const struct rb_node *b)
+{
+	return key_cmp(&data_from_node(a)->key, b);
+}
+
 ssize_t cmd_exec(struct file *file, const char __user *ubuf, size_t len, loff_t *offp)
 {
 	int cmd;
@@ -104,10 +104,10 @@ ssize_t cmd_exec(struct file *file, const char __user *ubuf, size_t len, loff_t 
 	case INSERT:
 		data = kzalloc(sizeof(*data), GFP_KERNEL);
 		data->key = input_key;
-		rb_add(&data->node, &rbt, data_less);
+		rb_find_add(&data->node, &rbt, node_cmp);
 		break;
 	case DELETE:
-		node = rb_find(&input_key, &rbt, data_cmp);
+		node = rb_find(&input_key, &rbt, key_cmp);
 		if (!node)
 			break;
 		rb_erase(node, &rbt);
