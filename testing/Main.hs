@@ -10,16 +10,25 @@ import RBT.Kernel (IRBT)
 import RBT.Verified
 import Strategy
 import System.Random
-import System.Random.Shuffle
 import qualified RBT.Kernel as Kernel
 import qualified RBT.Verified as RBT (empty)
 import qualified RBT.Verified as Verified (insert, delete)
 
-data Options = Options
-  { runs :: Word64
-  , seed :: Int
-  , randomTest :: Bool
-  , verbose :: Bool }
+data Options = Options {
+  strategy :: Strategy,
+  verbose :: Bool }
+
+data RandomOptions = RandomOptions {
+  runs :: Word64,
+  seed :: Int }
+
+newtype ExhaustiveOptions = ExhaustiveOptions { runs :: Word64 }
+newtype SymbolicOptions = SymbolicOptions { directory :: FilePath }
+
+data Strategy =
+  Random RandomOptions |
+  Exhaustive ExhaustiveOptions |
+  Symbolic SymbolicOptions
 
 naturalParser :: (Integral i, Read i) => ReadM i
 naturalParser = eitherReader $ \s -> if read s >= 0
@@ -28,14 +37,23 @@ naturalParser = eitherReader $ \s -> if read s >= 0
 
 options :: ParserInfo Options
 options = info (opts <**> helper) desc where
-  desc = fullDesc <> header "Userspace testing harness for the Linux red-black tree implementation"
-  opts = do
-    verbose    <- switch $ short 'v' <> help "verbose"
-    randomTest <- switch $ short 'r' <> help "Use the random test strategy instead of exhaustive testing one"
-    runs       <- option naturalParser $ short 'n' <> metavar "<runs>" <> help "Number of runs"
-    seed       <- option auto $ short 's' <> metavar "<seed>" <> showDefault <> value 42
-                  <> help "Seed for the pseudo-random-number generator"
-    pure Options {..}
+  desc = fullDesc <> header "Userspace testing harness for the Linux Red-Black tree implementation"
+  opts = Options <$> strategies <*> switch ( short 'v' <> help "verbose")
+  strategies :: Parser Strategy
+  strategies = hsubparser $
+      command "random" (info randomOpts mempty) <>
+      command "exhaustive" (info exhaustiveOpts mempty) <>
+      command "symbolic" (info symbolicOpts mempty)
+  randomOpts :: Parser Strategy
+  randomOpts = Random <$> (RandomOptions <$> runParser <*>
+    option auto ( short 's' <> metavar "<seed>" <> showDefault <> value 42 <>
+      help "Seed for the pseudo-random-number generator"))
+  exhaustiveOpts :: Parser Strategy
+  exhaustiveOpts = Exhaustive . ExhaustiveOptions <$> runParser
+  runParser = option naturalParser (short 'n' <> metavar "<runs>" <> help "Number of runs")
+  symbolicOpts :: Parser Strategy
+  symbolicOpts = Symbolic <$> (SymbolicOptions <$>
+    strOption (long "directory" <> short 'd' <> help "Directory containing all .stdin test cases"))
 
 restartHeader = "------Restart------\n"
 
@@ -43,13 +61,19 @@ main :: IO ()
 main = do
   Options{..} <- execParser options
   hdl <- Kernel.init
-  let rss = (if randomTest
-      then Strategy.random
-      else Strategy.exhaustive) hdl runs seed
+
+  rss <- case strategy of
+    Random RandomOptions{..} -> pure $ Strategy.random hdl runs seed
+    Exhaustive ExhaustiveOptions{..} -> pure $ Strategy.exhaustive hdl runs
+    Symbolic SymbolicOptions{..} -> Strategy.symbolic hdl directory >>= \case
+      Left _ -> error "Parsing failed"
+      Right r -> pure r
+
   forM_ rss $ \rs -> do
     Kernel.reset hdl
     when verbose $ putStrLn restartHeader
     checkResults verbose RBT.empty rs
+
   Kernel.cleanup hdl
 
 compareTrees :: IRBT -> IRBT -> Either [String] ()
@@ -78,6 +102,6 @@ checkResults verbose kTreePrev (Result{..}:rs) = do
   case compareTrees vTree kTree' of
     Left invs ->
       printTrees cmd key vTree kTree' kTreePrev invs
-    Right _ -> do 
+    Right _ -> do
       when verbose $ printTrees cmd key vTree kTree' kTreePrev []
       checkResults verbose kTree' rs
