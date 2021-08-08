@@ -28,6 +28,10 @@ parseStdin stdin = parseOnly testCaseParser <$> B.readFile stdin
 
 parseStdins :: FilePath -> IO (Either String [TestCase Input])
 parseStdins dir = do
+  symbolicLink <- pathIsSymbolicLink dir
+  dir <- if symbolicLink
+    then getSymbolicLinkTarget dir
+    else return dir
   files <- listDirectory dir
   let stdins = filter (".stdin" `isSuffixOf`) files
   sequence <$> forM stdins (parseStdin . combine dir)
