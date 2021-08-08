@@ -9,7 +9,15 @@ executable rbtTestHarness
   main-is:             Main.hs
   other-modules:       Strategy InputCollection RBT.Kernel RBT.Verified
   -- other-extensions:
-  build-depends:       base ^>=4.14.1.0, random, optparse-applicative, bytestring, attoparsec, directory, filepath 
+  build-depends:       base ^>=4.14.1.0,
+		       random,
+		       optparse-applicative,
+		       bytestring,
+		       attoparsec,
+		       directory,
+		       filepath,
+		       transformers,
+		       extra
   -- hs-source-dirs:
   default-language:    Haskell2010
   default-extensions:  RecordWildCards ApplicativeDo TupleSections DuplicateRecordFields LambdaCase

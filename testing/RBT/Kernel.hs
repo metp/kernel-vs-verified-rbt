@@ -1,6 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 module RBT.Kernel(Cmd(..), IRBT, RBT.Kernel.Handle, RBT.Kernel.init, cleanup, reset, insert, delete) where
 
+import Control.Monad.Extra (whenJust)
 import Data.Word (Word64)
 import GHC.IO.Handle
 import RBT.Verified (Tree, Color)
@@ -44,7 +45,7 @@ cleanup hdl = do
 
 exec :: Cmd -> Maybe Word64 -> RBT.Kernel.Handle -> IO IRBT
 exec cmd x Handle{..} = do
-  maybe (pure ()) (hPrint keyHdl) x
+  whenJust x $ hPrint keyHdl
   printCmd cmdHdl cmd
   hSeek cmdHdl AbsoluteSeek 0
   read <$> hGetLine cmdHdl
