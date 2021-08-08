@@ -1,15 +1,14 @@
 #define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
 
 #include <linux/debugfs.h>
+#include <linux/init.h>
 #include <linux/module.h>
 #include <linux/rbtree_augmented.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/types.h>
 
-#define CMD_INSERT 0
-#define CMD_DELETE 1
-#define CMD_RESET  2
+enum Cmd { RESET, INSERT, DELETE };
 
 static struct dentry *rbt_if_root;
 static struct rb_root rbt = RB_ROOT;
@@ -22,12 +21,55 @@ struct data {
 
 #define data_from_node(from) (rb_entry(from, struct data, node))
 
-static bool data_less(struct rb_node *a, const struct rb_node *b)
+#define print(...) seq_printf(m, __VA_ARGS__)
+#define print_parent print(" (%llu,%s) ", \
+		data_from_node(parent)->key, rb_is_red(parent) ? "Red" : "Black")
+
+static int cmd_show(struct seq_file *m, void *p)
 {
-	return data_from_node(a)->key < data_from_node(b)->key;
+	struct rb_node *node = rbt.rb_node, *parent = NULL;
+	bool left = false;
+	while(true) {
+		if (!node) {
+			print("Leaf");
+
+			if (!parent)
+				break;
+
+			if (left) {
+				print_parent;
+				node = parent->rb_right;
+				left = false;
+			} else {
+				while (rb_parent(parent) && parent->rb_right == node) {
+					print(")");
+					node = parent;
+					parent = rb_parent(node);
+				}
+
+				if (parent->rb_right == node)
+					break;
+
+				print_parent;
+				node = parent->rb_right;
+				left = false;
+			}
+		} else {
+			if (parent)
+				print("(");
+
+			print("Node ");
+			parent = node;
+			node = node->rb_left;
+			left = true;
+		}
+
+	}
+	print("\n");
+	return 0;
 }
 
-static int data_cmp(const void *_a, const struct rb_node *_b)
+static int key_cmp(const void *_a, const struct rb_node *_b)
 {
 	u64 a = *(typeof(a) *) _a;
 	u64 b = data_from_node(_b)->key;
@@ -39,55 +81,9 @@ static int data_cmp(const void *_a, const struct rb_node *_b)
 		return 0;
 }
 
-static int cmd_show(struct seq_file *m, void *p)
+static int node_cmp(struct rb_node *a, const struct rb_node *b)
 {
-	struct rb_node *node = rbt.rb_node, *parent = NULL;
-	bool left = false;
-	while(true) {
-		if (!node) {
-			seq_printf(m, "Leaf");
-
-			if (!parent)
-				break;
-
-			if (left) {
-				seq_printf(m, " (%llu,%s) ",
-						data_from_node(parent)->key,
-						rb_is_red(parent) ? "R" : "B");
-				node = parent->rb_right;
-				left = false;
-			} else {
-				while (rb_parent(parent) != NULL && parent->rb_right == node) {
-					seq_printf(m, ")");
-					node = parent;
-					parent = rb_parent(node);
-				}
-
-				if (parent->rb_right == node) {
-					break;
-				}
-
-				seq_printf(m, " (%llu,%s) ",
-						data_from_node(parent)->key,
-						rb_is_red(parent) ? "R" : "B");
-
-				node = parent->rb_right;
-				left = false;
-			}
-		} else {
-			if (parent)
-				seq_printf(m, "(Node ");
-			else
-				seq_printf(m, "Node ");
-
-			parent = node;
-			node = node->rb_left;
-			left = true;
-		}
-
-	}
-	seq_printf(m, "\n");
-	return 0;
+	return key_cmp(&data_from_node(a)->key, b);
 }
 
 ssize_t cmd_exec(struct file *file, const char __user *ubuf, size_t len, loff_t *offp)
@@ -99,25 +95,23 @@ ssize_t cmd_exec(struct file *file, const char __user *ubuf, size_t len, loff_t 
 	if (ret)
 		return ret;
 
-	//pr_info("cmd: %d key: %llu value: %llu\n", cmd, input_key, input_value);
-
 	switch (cmd) {
-	case CMD_INSERT:
-		data = kzalloc(sizeof(*data), GFP_KERNEL);
-		data->key = input_key;
-		rb_add(&data->node, &rbt, data_less);
-		break;
-	case CMD_DELETE:
-		node = rb_find(&input_key, &rbt, data_cmp);
-		if (!node)
-			return -EINVAL;
-		rb_erase(node, &rbt);
-		kfree(data_from_node(node));
-		break;
-	case CMD_RESET:
+	case RESET:
 		rbtree_postorder_for_each_entry_safe(data, _n, &rbt, node)
 			kfree(data);
 		rbt = RB_ROOT;
+		break;
+	case INSERT:
+		data = kzalloc(sizeof(*data), GFP_KERNEL);
+		data->key = input_key;
+		rb_find_add(&data->node, &rbt, node_cmp);
+		break;
+	case DELETE:
+		node = rb_find(&input_key, &rbt, key_cmp);
+		if (!node)
+			break;
+		rb_erase(node, &rbt);
+		kfree(data_from_node(node));
 		break;
 	default:
 		return -EINVAL;
@@ -139,7 +133,7 @@ static const struct file_operations cmd_fops = {
 	.release	= single_release,
 };
 
-int init_module(void)
+int __init rbt_if_init(void)
 {
 	rbt_if_root = debugfs_create_dir("rbt_if", NULL);
 	if (IS_ERR(rbt_if_root)) {
@@ -154,7 +148,7 @@ int init_module(void)
 	return 0;
 }
 
-void cleanup_module(void)
+void __exit rbt_if_exit(void)
 {
 	struct data *_n, *pos;
 	debugfs_remove_recursive(rbt_if_root);
@@ -163,5 +157,7 @@ void cleanup_module(void)
 
 }
 
+module_init(rbt_if_init);
+module_exit(rbt_if_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Mete Polat <mete.polat@cs.tum.edu>");

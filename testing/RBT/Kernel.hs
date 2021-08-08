@@ -1,21 +1,62 @@
-module RBT.Kernel where
+{-# LANGUAGE RecordWildCards #-}
+module RBT.Kernel(Cmd(..), IRBT, RBT.Kernel.Handle, RBT.Kernel.init, cleanup, reset, insert, delete) where
 
+import Control.Monad.Extra (whenJust)
+import Data.Word (Word64)
+import GHC.IO.Handle
 import RBT.Verified (Tree, Color)
+import System.IO
+import qualified RBT.Verified as RBT (equal_tree, empty)
+import Control.Exception (assert)
+
+type IRBT = Tree (Word64, Color)
 
 keyFile = "/sys/kernel/debug/rbt_if/key"
 cmdFile = "/sys/kernel/debug/rbt_if/cmd"
 
-insert :: Int -> IO (Tree (Int,Color))
-insert k = do
-  writeFile keyFile $ show k
-  writeFile cmdFile "0"
-  read <$> readFile cmdFile
+data Cmd = Reset | Insert | Delete deriving (Enum, Bounded)
 
-delete :: Int -> IO (Tree (Int,Color))
-delete k = do
-  writeFile keyFile $ show k
-  writeFile cmdFile "1"
-  read <$> readFile cmdFile
+printCmd hdl = hPrint hdl . fromEnum
 
-reset :: IO ()
-reset = writeFile cmdFile "2"
+instance Show Cmd where
+  show Reset = "resetting"
+  show Insert = "inserting"
+  show Delete = "deleting"
+
+data Handle = Handle {
+  keyHdl :: GHC.IO.Handle.Handle,
+  cmdHdl :: GHC.IO.Handle.Handle }
+
+init :: IO RBT.Kernel.Handle
+init = do
+  keyHdl <- openFile keyFile WriteMode
+  cmdHdl <- openFile cmdFile ReadWriteMode
+  let hdl = Handle{..}
+  hSetBuffering keyHdl LineBuffering
+  hSetBuffering cmdHdl LineBuffering
+  reset hdl
+  return hdl
+
+cleanup :: RBT.Kernel.Handle -> IO ()
+cleanup hdl = do
+  reset hdl
+  hClose $ keyHdl hdl
+  hClose $ cmdHdl hdl
+
+exec :: Cmd -> Maybe Word64 -> RBT.Kernel.Handle -> IO IRBT
+exec cmd x Handle{..} = do
+  whenJust x $ hPrint keyHdl
+  printCmd cmdHdl cmd
+  hSeek cmdHdl AbsoluteSeek 0
+  read <$> hGetLine cmdHdl
+
+reset :: RBT.Kernel.Handle -> IO IRBT
+reset hdl = do 
+  tree <- exec Reset Nothing hdl
+  assert (RBT.equal_tree RBT.empty tree) $ return tree
+
+insert :: RBT.Kernel.Handle -> Word64 -> IO IRBT
+insert hdl x = exec Insert (Just x) hdl
+
+delete :: RBT.Kernel.Handle -> Word64 -> IO IRBT
+delete hdl x = exec Delete (Just x) hdl

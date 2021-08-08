@@ -1,64 +1,138 @@
-{-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE ApplicativeDo              #-}
-
 module Main where
 
-import RBT.Verified (Tree, Color)
-import qualified RBT.Verified as RBT (empty)
-import qualified RBT.Verified as Verified (insert, delete)
-import qualified RBT.Kernel as Kernel (insert, delete, reset)
-import Control.Monad (when, unless, foldM_)
-import System.Environment (getArgs)
-import System.Random
+import Control.Monad
+import Data.Bifunctor
 import Data.List
 import Data.Maybe
+import Data.Word (Word64)
 import Options.Applicative
+import RBT.Kernel (IRBT, Cmd(..))
+import RBT.Verified
+import Strategy
+import System.Random
+import qualified RBT.Kernel as Kernel
+import qualified RBT.Verified as RBT (empty, equal_tree)
+import qualified RBT.Verified as Verified (insert, delete)
 
-data Options = Options
-  { runs :: Int
-  , seed :: Int
-  , verbose :: Bool }
+data Options = Options {
+  strategy :: Strategy,
+  verbose :: Bool,
+  structural :: Bool }
 
-naturalParser :: ReadM Int
-naturalParser = eitherReader $ \s -> if read s >= 0
-  then Right $ read s
-  else Left "Not a positive value"
+data RandomOptions = RandomOptions {
+  n :: Word64,
+  seed :: Int }
 
-options :: ParserInfo Options
-options = info (opts <**> helper) desc where
-  desc = fullDesc <> header "Userspace testing harness for the Linux red-black tree implementation"
-  opts = do
-    verbose    <- switch $ short 'v' <> help "verbose"
-    runs       <- option naturalParser $ short 'n' <> metavar "<runs>" <> help "Number of runs"
-    seed       <- option auto $ short 's' <> metavar "<seed>" <> showDefault <> value 42
-                  <> help "Seed for the pseudo-random-number generator"
-    pure Options {..}
+newtype ExhaustiveOptions = ExhaustiveOptions { n :: Word64 }
+newtype SymbolicOptions = SymbolicOptions { directory :: FilePath }
+
+data Strategy =
+  Random RandomOptions |
+  Exhaustive ExhaustiveOptions |
+  Symbolic SymbolicOptions
+
+restartHeader = "------Restart------\n"
 
 main :: IO ()
 main = do
-  opts <- execParser options
-  Kernel.reset
-  let gen = mkStdGen $ seed opts
-  let range = tokenRange $ runs opts
-  let numbers = take (runs opts) $ nub $ unfoldr (Just . uniformR range) gen
-  foldM_ (test $ verbose opts)  RBT.empty numbers
+  Options{..} <- execParser options
+  hdl <- Kernel.init
 
-test :: Bool -> Tree (Int, Color) -> Int -> IO (Tree (Int, Color))
-test verbose tree k = do
-  let verifiedTree = Verified.insert k tree
-  kernelTree <- Kernel.insert k
-  when (verbose || show verifiedTree /= show kernelTree) $ do
-    putStrLn $ "Trees after inserting " ++ show k
-    putStrLn $ "Verified: " ++ show verifiedTree
-    putStrLn $ "Kernel:   " ++ show kernelTree
-    putStrLn $ "Diff:     " ++ diff (show verifiedTree) (show kernelTree)
-    putStrLn ""
-  return verifiedTree
+  rss <- case strategy of
+    Random RandomOptions{..} -> pure $ Strategy.random hdl n seed
+    Exhaustive ExhaustiveOptions{..} -> pure $ Strategy.exhaustive hdl n
+    Symbolic SymbolicOptions{..} -> Strategy.symbolic hdl directory >>= \case
+      Left _ -> error "Parsing failed"
+      Right r -> pure r
 
-diff :: String -> String -> String
-diff as bs = [if a == b then '.' else 'X' | (a,b) <- zip as bs] ++ replicate (abs $ length as - length bs) '.'
+  forM_ rss $ \rs -> do
+    Kernel.reset hdl
+    when verbose $ putStrLn restartHeader
+    checkResults verbose structural RBT.empty rs
 
-tokenRange :: Int -> (Int,Int)
-tokenRange n | n < 10 = (0,9)
-tokenRange n = (10^(d - 1), 10^d - 1)
-  where d = fromJust $ elemIndex 0 (iterate (`div` 10) n)
+  Kernel.cleanup hdl
+
+
+structuralCompare :: IRBT -> IRBT -> Either [String] ()
+structuralCompare a b
+  | equal_tree a b = Right ()
+  | otherwise = Left ["RBTs not equal"]
+
+invariantCompare :: IRBT -> IRBT -> Either [String] ()
+invariantCompare vTree kTree
+  | rbt kTree && inorder kTree == inorder vTree = Right ()
+  | otherwise = Left $ map fst $ filter (not . snd) [
+      ("color"     ,  invc kTree) ,
+      ("height"    ,  invh kTree) ,
+      ("root_black",  rootBlack kTree) ,
+      ("inorder"   ,  inorder vTree == inorder kTree) ]
+
+printTrees :: Cmd -> Word64 -> IRBT -> IRBT -> IRBT -> [String] -> IO ()
+printTrees cmd key vTree kTree kTreePrev invs = do
+  putStrLn $ unwords $ if null invs
+  then [show cmd, show key]
+  else ["After", show cmd, show key, "following invariants failed:"] ++ invs
+  putStrLn $ "Kernel tree before:  " ++ show kTreePrev
+  putStrLn $ "Kernel tree after:   " ++ show kTree
+  putStrLn $ "Verified tree after: " ++ show vTree
+  putStrLn ""
+
+checkResults :: Bool -> Bool -> IRBT -> [Result] -> IO ()
+checkResults _ _ _ [] = return ()
+checkResults verbose structural kTreePrev (Result{..}:rs) = do
+  kTree' <- kTree
+  let cmpResult = if structural
+      then structuralCompare vTree kTree'
+      else invariantCompare vTree kTree'
+
+  case cmpResult of
+    Left invs -> printTrees cmd key vTree kTree' kTreePrev invs
+    Right _ -> do
+      when verbose $ printTrees cmd key vTree kTree' kTreePrev []
+      checkResults verbose structural kTree' rs
+
+
+{- HLINT ignore options "Monoid law, left identity" -}
+options :: ParserInfo Options
+options = info (opts <**> helper) desc where
+  desc = fullDesc <> header "Userspace testing harness for the Linux Red-Black tree implementation"
+
+  opts = Options 
+    <$> strategies
+    <*> switch ( short 'v' <> help "verbose" )
+    <*> switch ( short 's' <> help "Use the structural comparison method" )
+
+  strategies :: Parser Strategy
+  strategies = hsubparser $ mempty
+    <> command "random" (info randomOpts mempty) 
+    <> command "exhaustive" (info exhaustiveOpts mempty)
+    <> command "symbolic" (info symbolicOpts mempty)
+
+  naturalParser :: (Integral i, Read i) => ReadM i
+  naturalParser = eitherReader $ \s -> 
+    if 0 <= read s
+    then Right $ read s
+    else Left "Not a positive value"
+
+  numberParser :: (Integral i, Read i) => Parser i
+  numberParser = option naturalParser (short 'n')
+
+  randomOpts :: Parser Strategy
+  randomOpts = fmap Random $ RandomOptions 
+    <$> numberParser
+    <*> option auto (mempty
+          <> short 's'
+          <> metavar "<seed>"
+          <> showDefault
+          <> value 42
+          <> help "Seed for the pseudo-random-number generator" )
+
+  exhaustiveOpts :: Parser Strategy
+  exhaustiveOpts = Exhaustive . ExhaustiveOptions <$> numberParser
+
+  symbolicOpts :: Parser Strategy
+  symbolicOpts = fmap Symbolic $ SymbolicOptions
+    <$> strOption (mempty
+          <> short 'd'
+          <> long "directory"
+          <> help "Directory containing all .stdin test cases" )
