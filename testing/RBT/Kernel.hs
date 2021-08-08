@@ -6,6 +6,7 @@ import GHC.IO.Handle
 import RBT.Verified (Tree, Color)
 import System.IO
 import qualified RBT.Verified as RBT (equal_tree, empty)
+import Control.Exception (assert)
 
 type IRBT = Tree (Word64, Color)
 
@@ -51,9 +52,7 @@ exec cmd x Handle{..} = do
 reset :: RBT.Kernel.Handle -> IO IRBT
 reset hdl = do 
   tree <- exec Reset Nothing hdl
-  if RBT.equal_tree RBT.empty tree
-    then pure tree
-    else errorWithoutStackTrace "Kernel RB-Tree initialization failed"
+  assert (RBT.equal_tree RBT.empty tree) $ return tree
 
 insert :: RBT.Kernel.Handle -> Word64 -> IO IRBT
 insert hdl x = exec Insert (Just x) hdl
