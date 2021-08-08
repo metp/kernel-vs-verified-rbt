@@ -6,7 +6,7 @@ import Data.List
 import Data.Maybe
 import Data.Word (Word64)
 import Options.Applicative
-import RBT.Kernel (IRBT)
+import RBT.Kernel (IRBT, Cmd(..))
 import RBT.Verified
 import Strategy
 import System.Random

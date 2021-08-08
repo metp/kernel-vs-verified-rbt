@@ -1,4 +1,4 @@
-module InputCollection (Input, Run, parseStdins) where
+module InputCollection (Input, TestCase, parseStdins) where
 
 import Control.Applicative
 import Control.Monad
@@ -12,21 +12,21 @@ import System.FilePath
 import qualified Data.ByteString as B
 
 type Input = (Cmd,Word64)
-type Run a = [a]
+type TestCase a = [a]
 
-parseInput :: Parser Input
-parseInput = do
+inputParser :: Parser Input
+inputParser = do
   c <- anyWord8
   x <- anyWord8
   return (if c == 0 then Delete else Insert, fromIntegral x)
 
-parseRun :: Parser (Run Input)
-parseRun = many parseInput
+testCaseParser :: Parser (TestCase Input)
+testCaseParser = many inputParser
 
-parseStdin :: FilePath -> IO (Either String (Run Input))
-parseStdin stdin = parseOnly parseRun <$> B.readFile stdin
+parseStdin :: FilePath -> IO (Either String (TestCase Input))
+parseStdin stdin = parseOnly testCaseParser <$> B.readFile stdin
 
-parseStdins :: FilePath ->IO (Either String [Run Input])
+parseStdins :: FilePath -> IO (Either String [TestCase Input])
 parseStdins dir = do
   files <- listDirectory dir
   let stdins = filter (".stdin" `isSuffixOf`) files
