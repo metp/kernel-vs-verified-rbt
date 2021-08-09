@@ -15,10 +15,9 @@ import qualified RBT.Verified as Verified (insert, delete)
 import Control.Applicative
 
 data Result = Result {
-  cmd :: Cmd,
-  key :: Word64,
+  input :: Input,
   vTree :: IRBT,
-  kTree :: IO IRBT }
+  kTreeIO :: IO IRBT }
 
 instance Uniform Cmd where
   uniformM g = toEnum <$> uniformRM (succ minCmd, maxCmd) g
@@ -49,8 +48,7 @@ buildResults hdl testCases = do
   inputs <- testCases
   let vTrees = tail $ scanl vCmd RBT.empty inputs
   let kTrees = map (kCmd hdl) inputs
-  let (cmds,xs) = unzip inputs
-  return $ zipWith4 Result cmds xs vTrees kTrees
+  return $ zipWith3 Result inputs vTrees kTrees
 
 random :: Kernel.Handle -> Word64 -> Int -> [TestCase Result]
 random hdl runs seed = do

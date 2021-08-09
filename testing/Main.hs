@@ -1,15 +1,12 @@
 module Main where
 
 import Control.Monad
-import Data.Bifunctor
-import Data.List
-import Data.Maybe
 import Data.Word (Word64)
+import InputCollection
 import Options.Applicative
 import RBT.Kernel (IRBT, Cmd(..))
 import RBT.Verified
 import Strategy
-import System.Random
 import qualified RBT.Kernel as Kernel
 import qualified RBT.Verified as RBT (empty, equal_tree)
 import qualified RBT.Verified as Verified (insert, delete)
@@ -54,21 +51,18 @@ main = do
 
 
 structuralCompare :: IRBT -> IRBT -> Either [String] ()
-structuralCompare a b
-  | equal_tree a b = Right ()
-  | otherwise = Left ["RBTs not equal"]
+structuralCompare a b = unless (equal_tree a b) $ Left ["RBTs not equal"]
 
 invariantCompare :: IRBT -> IRBT -> Either [String] ()
-invariantCompare vTree kTree
-  | rbt kTree && inorder kTree == inorder vTree = Right ()
-  | otherwise = Left $ map fst $ filter (not . snd) [
+invariantCompare vTree kTree = unless (rbt kTree && inorder kTree == inorder vTree) $
+  Left $ map fst $ filter (not . snd) [
       ("color"     ,  invc kTree) ,
       ("height"    ,  invh kTree) ,
       ("root_black",  rootBlack kTree) ,
       ("inorder"   ,  inorder vTree == inorder kTree) ]
 
-printTrees :: Cmd -> Word64 -> IRBT -> IRBT -> IRBT -> [String] -> IO ()
-printTrees cmd key vTree kTree kTreePrev invs = do
+printTrees :: Input -> IRBT -> IRBT -> IRBT -> [String] -> IO ()
+printTrees (cmd,key) vTree kTree kTreePrev invs = do
   putStrLn $ unwords $ if null invs
   then [show cmd, show key]
   else ["After", show cmd, show key, "following invariants failed:"] ++ invs
@@ -80,16 +74,16 @@ printTrees cmd key vTree kTree kTreePrev invs = do
 checkResults :: Bool -> Bool -> IRBT -> [Result] -> IO ()
 checkResults _ _ _ [] = return ()
 checkResults verbose structural kTreePrev (Result{..}:rs) = do
-  kTree' <- kTree
-  let cmpResult = if structural
-      then structuralCompare vTree kTree'
-      else invariantCompare vTree kTree'
+  kTree <- kTreeIO
+  let cmpResult = (if structural
+      then structuralCompare
+      else invariantCompare) vTree kTree
 
   case cmpResult of
-    Left invs -> printTrees cmd key vTree kTree' kTreePrev invs
+    Left invs -> printTrees input vTree kTree kTreePrev invs
     Right _ -> do
-      when verbose $ printTrees cmd key vTree kTree' kTreePrev []
-      checkResults verbose structural kTree' rs
+      when verbose $ printTrees input  vTree kTree kTreePrev []
+      checkResults verbose structural kTree rs
 
 
 {- HLINT ignore options "Monoid law, left identity" -}
