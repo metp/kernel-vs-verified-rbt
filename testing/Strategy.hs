@@ -14,11 +14,6 @@ import qualified RBT.Verified as RBT (empty)
 import qualified RBT.Verified as Verified (insert, delete)
 import Control.Applicative
 
-data Result = Result {
-  input :: Input,
-  vTree :: IRBT,
-  kTreeIO :: IO IRBT }
-
 instance Uniform Cmd where
   uniformM g = toEnum <$> uniformRM (succ minCmd, maxCmd) g
     where
@@ -33,38 +28,37 @@ cmdMap Reset = undefined
 vCmd :: IRBT -> Input -> IRBT
 vCmd t (c,x) = (fst $ cmdMap c) x t
 
-kCmd :: Kernel.Handle -> Input -> IO IRBT
-kCmd hdl (c,x) = (snd $ cmdMap c) hdl x
+kCmd :: Input -> Kernel.Handle -> IO IRBT
+kCmd (c,x) hdl = (snd $ cmdMap c) hdl x
 
 buildInput :: [Word64] -> [Word64] -> [Cmd] -> TestCase Input
 buildInput _ _ [] = []
 buildInput (i:is) ds (Insert : cs) = (Insert, i) : buildInput is ds cs
 buildInput is (d:ds) (Delete : cs) = (Delete, d) : buildInput is ds cs
-buildInput is ds (Reset : cs) = buildInput is ds cs
 buildInput _ _ _ = undefined
 
-buildResults :: Kernel.Handle -> [TestCase Input] -> [TestCase Result]
-buildResults hdl testCases = do
+buildResults :: [TestCase Input] -> [TestCase Result]
+buildResults testCases = do
   inputs <- testCases
   let vTrees = tail $ scanl vCmd RBT.empty inputs
-  let kTrees = map (kCmd hdl) inputs
+  let kTrees = map kCmd inputs
   return $ zipWith3 Result inputs vTrees kTrees
 
-random :: Kernel.Handle -> Word64 -> Int -> [TestCase Result]
-random hdl runs seed = do
+random :: Word64 -> Int -> [TestCase Result]
+random runs seed = do
   let rndCmds = randoms seed
   let rndXs = randoms seed
   let inputs = genericTake runs (buildInput rndXs rndXs rndCmds)
-  buildResults hdl [inputs]
+  buildResults [inputs]
   where
     randoms :: Uniform a => Int -> [a]
     randoms = unfoldr (Just . uniform) . mkStdGen
 
-exhaustive :: Kernel.Handle -> Word64 -> [TestCase Result]
-exhaustive hdl n = do
+exhaustive :: Word64 -> [TestCase Result]
+exhaustive n = do
   let distributions = [genericReplicate i Insert ++ genericReplicate (n-i) Delete | i <- [n,n-1..]]
   let inputRuns = concatMap (permutations . buildInput [1..n] [1..n]) distributions
-  buildResults hdl inputRuns
+  buildResults inputRuns
 
-symbolic :: Kernel.Handle -> FilePath -> IO (Either String [TestCase Result])
-symbolic hdl = fmap (buildResults hdl <$>) . parseStdins
+symbolic :: FilePath -> IO (Either String [TestCase Result])
+symbolic = fmap (buildResults <$>) . parseStdins

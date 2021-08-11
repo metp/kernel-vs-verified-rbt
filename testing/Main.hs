@@ -1,6 +1,8 @@
 module Main where
 
 import Control.Monad
+import Control.Monad.Reader
+import Data.Monoid
 import Data.Word (Word64)
 import InputCollection
 import Options.Applicative
@@ -18,9 +20,13 @@ data Options = Options {
 
 data RandomOptions = RandomOptions {
   n :: Word64,
-  seed :: Int }
+  seed :: Int,
+  export :: Bool }
 
-newtype ExhaustiveOptions = ExhaustiveOptions { n :: Word64 }
+data ExhaustiveOptions = ExhaustiveOptions {
+  n :: Word64,
+  export :: Bool }
+
 newtype SymbolicOptions = SymbolicOptions { directory :: FilePath }
 
 data Strategy =
@@ -32,22 +38,33 @@ restartHeader = "------Restart------\n"
 
 main :: IO ()
 main = do
-  Options{..} <- execParser options
-  hdl <- Kernel.init
+  options@Options{..} <- execParser options
 
   rss <- case strategy of
-    Random RandomOptions{..} -> pure $ Strategy.random hdl n seed
-    Exhaustive ExhaustiveOptions{..} -> pure $ Strategy.exhaustive hdl n
-    Symbolic SymbolicOptions{..} -> Strategy.symbolic hdl directory >>= \case
-      Left _ -> error "Parsing failed"
-      Right r -> pure r
+    Random RandomOptions{..} -> do
+      let rss = Strategy.random n seed
+      if export
+      then printTestCaseResults rss >> pure []
+      else pure rss
+    Exhaustive ExhaustiveOptions{..} -> do
+      let rss = Strategy.exhaustive n
+      if export
+      then printTestCaseResults rss >> pure []
+      else pure rss
+    Symbolic SymbolicOptions{..} ->
+      Strategy.symbolic directory >>= \case
+        Left s -> error s
+        Right r -> pure r
 
-  forM_ rss $ \rs -> do
-    Kernel.reset hdl
-    when verbose $ putStrLn restartHeader
-    checkResults verbose structural RBT.empty rs
+  unless (null rss) $ do
+    hdl <- Kernel.init
 
-  Kernel.cleanup hdl
+    forM_ rss $ \rs -> do
+      Kernel.reset hdl
+      when verbose $ putStrLn restartHeader
+      runReaderT (checkResults rs RBT.empty hdl) options
+
+    Kernel.cleanup hdl
 
 
 structuralCompare :: IRBT -> IRBT -> Either [String] ()
@@ -71,19 +88,22 @@ printTrees (cmd,key) vTree kTree kTreePrev invs = do
   putStrLn $ "Verified tree after: " ++ show vTree
   putStrLn ""
 
-checkResults :: Bool -> Bool -> IRBT -> [Result] -> IO ()
-checkResults _ _ _ [] = return ()
-checkResults verbose structural kTreePrev (Result{..}:rs) = do
-  kTree <- kTreeIO
-  let cmpResult = (if structural
+checkResults :: [Result] -> IRBT -> Kernel.Handle -> ReaderT Options IO ()
+checkResults [] _ _  = liftIO $ return ()
+checkResults (Result{..}:rs) kTreePrev hdl = do
+  kTree <- liftIO $ kTreeIO hdl
+  s <- asks structural
+  let cmpResult = (if s
       then structuralCompare
       else invariantCompare) vTree kTree
 
   case cmpResult of
-    Left invs -> printTrees input vTree kTree kTreePrev invs
+    Left invs -> liftIO $
+      printTrees input vTree kTree kTreePrev invs
     Right _ -> do
-      when verbose $ printTrees input  vTree kTree kTreePrev []
-      checkResults verbose structural kTree rs
+      v <- asks verbose
+      when v $ liftIO $ printTrees input vTree kTree kTreePrev []
+      checkResults rs kTree hdl
 
 
 {- HLINT ignore options "Monoid law, left identity" -}
@@ -94,7 +114,7 @@ options = info (opts <**> helper) desc where
   opts = Options 
     <$> strategies
     <*> switch ( short 'v' <> help "verbose" )
-    <*> switch ( short 's' <> help "Use the structural comparison method" )
+    <*> switch ( short 'c' <> help "Use the structural comparison method" )
 
   strategies :: Parser Strategy
   strategies = hsubparser $ mempty
@@ -111,6 +131,11 @@ options = info (opts <**> helper) desc where
   numberParser :: (Integral i, Read i) => Parser i
   numberParser = option naturalParser (short 'n')
 
+  exportOption :: Parser Bool
+  exportOption = switch $ mempty
+    <> short 'p'
+    <> help "Do not execute test cases, but print them on stdout"
+
   randomOpts :: Parser Strategy
   randomOpts = fmap Random $ RandomOptions 
     <$> numberParser
@@ -120,9 +145,12 @@ options = info (opts <**> helper) desc where
           <> showDefault
           <> value 42
           <> help "Seed for the pseudo-random-number generator" )
+    <*> exportOption
 
   exhaustiveOpts :: Parser Strategy
-  exhaustiveOpts = Exhaustive . ExhaustiveOptions <$> numberParser
+  exhaustiveOpts = fmap Exhaustive $ ExhaustiveOptions
+    <$> numberParser
+    <*> exportOption
 
   symbolicOpts :: Parser Strategy
   symbolicOpts = fmap Symbolic $ SymbolicOptions
