@@ -1,0 +1,14 @@
+This project is provided under:
+
+	SPDX-License-Identifier: GPL-2.0-or-later
+	EXCEPT for the files HOL-RBT/RBT.thy and HOL-RBT/RBT_Set.thy
+
+Being under the terms of the GNU General Public License version 2 or later,
+according with:
+
+	LICENSES/GPL-2.0
+
+Except for the two files that are under the terms of the Isabelle license:
+
+	LICENSES/Isabelle
+
