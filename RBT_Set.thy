@@ -131,7 +131,7 @@ lemma invh_baliR:
 by (induct l a r rule: baliR.induct) auto
 
 lemma ins_Red_invcs: "\<lbrakk>invc t; invc3 (ins x t); color t = Red\<rbrakk> \<Longrightarrow> invc2 (ins x t)"
-  by (induction x t rule: ins.induct) auto
+  by (induct x t rule: ins.induct) auto
 
 text \<open>All in one:\<close>
 
