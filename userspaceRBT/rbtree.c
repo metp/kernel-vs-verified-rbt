@@ -405,12 +405,14 @@ ____rb_erase_color(struct rb_node *parent, struct rb_root *root,
 	}
 }
 
+#ifndef CORE
 /* Non-inline version for rb_erase_augmented() use */
-//void __rb_erase_color(struct rb_node *parent, struct rb_root *root,
-//	void (*augment_rotate)(struct rb_node *old, struct rb_node *new))
-//{
-//	____rb_erase_color(parent, root, augment_rotate);
-//}
+void __rb_erase_color(struct rb_node *parent, struct rb_root *root,
+	void (*augment_rotate)(struct rb_node *old, struct rb_node *new))
+{
+	____rb_erase_color(parent, root, augment_rotate);
+}
+#endif
 
 /*
  * Non-augmented rbtree manipulation functions.
@@ -442,6 +444,7 @@ void rb_erase(struct rb_node *node, struct rb_root *root)
 		____rb_erase_color(rebalance, root, dummy_rotate);
 }
 
+#ifndef CORE
 /*
  * Augmented rbtree manipulation functions.
  *
@@ -556,6 +559,8 @@ void rb_replace_node(struct rb_node *victim, struct rb_node *new,
 		rb_set_parent(victim->rb_right, new);
 	__rb_change_child(victim, new, parent, root);
 }
+
+#endif
 
 static struct rb_node *rb_left_deepest_node(const struct rb_node *node)
 {

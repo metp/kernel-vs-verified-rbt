@@ -59,13 +59,11 @@ int main() {
 		}
 	}
 
-	// uncomment this for the coverage analysis
-
-	/*
+#ifdef COVERAGE
 	struct data *_n, *pos;
 	rbtree_postorder_for_each_entry_safe(pos, _n, &rbt, node)
 		free(pos);
 	rbt = RB_ROOT;
-	*/
+#endif
 
 }
