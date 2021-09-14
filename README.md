@@ -1,4 +1,4 @@
-# Source Code of my Bachelor's Thesis: Testing the Red-Black Tree Implementation of the Linux Kernel against a Formally Verified Variant
+# My Bachelor's Thesis (including source sode): [Testing the Red-Black Tree Implementation of the Linux Kernel against a Formally Verified Variant](thesis.pdf)
 ## Abstract
 This thesis shows how to construct evidence of correctness for the Red-Black tree (RBT)
 implementation of the Linux kernel through testing and formal verification. First, it
